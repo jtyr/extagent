@@ -1,0 +1,44 @@
+################
+### ExtAgent ###
+################
+
+
+Description
+-----------
+
+Set of monitoring sensors which extend the functionality of the standard SNMP
+daemon.
+
+
+License
+-------
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+Installation
+------------
+
+$ make
+$ make install
+
+Other useful commands:
+$ make manifest - generate new MANIFEST
+$ make svn      - generate spec file with SVN revision number
+$ make perforce - generate spec file with Perforce revision number
+$ make dist     - pack all files in MANIFEST
+$ make clean    - clean dir
+$ make clear    - clear dir
+
+
+Jiri Tyr <jiri(dot)tyr(at)gmail(dot)com> (c) 2012-2013

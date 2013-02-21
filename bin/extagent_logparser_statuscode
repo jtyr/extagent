@@ -1,0 +1,391 @@
+#!/usr/bin/perl
+
+
+#####
+#
+# Description:
+# ============
+#
+# This is SNMP extension agent for HTTP status code monitoring.
+#
+#####
+#
+# Created by: <jiri(dot)tyr(at)gmail(dot)com>
+#
+#####
+
+
+use strict;
+use warnings;
+use Getopt::Long;
+use NetSNMP::agent (':all');
+use NetSNMP::ASN qw(ASN_INTEGER);
+use threads;
+use threads::shared;
+
+
+# Flush output immidiately
+$| = 1;
+
+
+# File with default values
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_logparser_statuscode.conf';
+# Read default values from file
+my %CFG = &readDefaults();
+
+
+# Log directory
+my $dir;
+# File pattern
+my $file_pattern;
+# Application instance
+my $instance;
+# Date format
+my $date_format = $CFG{'DATA_FORMAT'} || '%d/%b/%Y:%H:%M';
+# Replace index
+my $value_regexp = $CFG{'VALUE_REGEXP'} || '.* ([2345])[0-9]{2} .* (.*) ".?*"$';
+# Status code index
+my $code_index = $CFG{'CODE_INDEX'} || 1;
+# Response time index
+my $resp_index = $CFG{'RESP_INDEX'} || 2;
+# Debug variable
+my $DEBUG = $CFG{'DEBUG'} || 0;
+# To show help
+my $help = 0;
+
+# Read the command line options
+GetOptions (
+	'd|dir=s'	=> \$dir,
+	'p|pattern=s'	=> \$file_pattern,
+	'i|instance=i'	=> \$instance,
+	'f|format=s'	=> \$date_format,
+	'v|value=s'	=> \$value_regexp,
+	'c|codeidx=i'	=> \$code_index,
+	'r|respidx=i'	=> \$resp_index,
+	'e|debug'	=> \$DEBUG,
+	'h|help'	=> \$help
+);
+
+# Verify input params
+if ($help == 1) {
+	&help();
+	exit 0;
+}
+unless (defined $dir and defined $file_pattern and defined $instance) {
+	print 'ERROR: Missing parameter!'."\n";
+	&help();
+	exit 1;
+}
+
+
+# Status code counters
+my %cnt :shared;
+# Sum of all response times
+my $response = 0;
+# Number of hits
+my $hits = 0;
+# Timestamp of the last log parsing
+my $prev_timestamp = 0;
+# Maximum time between the collections in seconds (4 minutes)
+my $max_time = $CFG{'MAX_TIME'} || 240;
+# Parse only last N seconds (300 = 5 mins)
+my $period = $CFG{'PERIOD'} || 300;
+# Random sleep at the start of the script
+my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
+# Name of the agent
+my $NAME = $CFG{'NAME'} || 'logparser_statuscode';
+# OID of the agent
+my $OID = ($CFG{'OID'} ||
+          '1.3.6.1.4.1.8072.9999.9999.1.1').'.'.$instance;
+#                      |    |    |    | |       |
+#                      |    |    |    | |       +--- app instance
+#                      |    |    |    | +----------- statusCode
+#                      |    |    |    +------------- logParser
+#                      |    |    +------------------ netSnmpPlaypen
+#                      |    +----------------------- netSnmpExperimental
+#                      +---------------------------- NET-SNMP-MIB
+
+
+&message('I', '### Starting agent PID '.$$) if ($DEBUG > 0);
+&message('I', 'OID: '.$OID) if ($DEBUG > 0);
+
+
+# Create an agent
+my $agent = new NetSNMP::agent(
+	# makes the agent read a my_agent_name.conf file
+	'Name'		=> $NAME,
+	'AgentX'	=> 1
+);
+
+
+# Sleep to spread load at the start time
+&message('I', 'Sleeping '.$sleep.'s') if ($DEBUG > 0);
+sleep($sleep);
+
+
+# Register the agent
+$agent->register($NAME, $OID, \&myHandler) or die 'Can not register client!';
+
+
+# Wait for requests in infinite loop
+while (1) {
+	# Check when was the last parsing
+	my $curr_timestamp = time;
+	if ($curr_timestamp - $prev_timestamp > $max_time) {
+		# Reset values to zero
+		$response = 0;
+		$hits = 0;
+		foreach my $n (2..5) {
+			$cnt{$n} = 0;
+		}
+
+		# Create a thread to read the data
+		threads->create(sub {
+			&message('I', 'Starting thread (TID: '.threads->tid().')') if ($DEBUG > 0);
+
+			# Read the log file
+			&getData();
+
+			&message('I', 'Finishing thread (TID: '.threads->tid().')') if ($DEBUG > 0);
+			#threads->exit();
+		})->detach();
+
+		$prev_timestamp = $curr_timestamp;
+	}
+
+	$agent->agent_check_and_process(1);
+}
+
+
+# Shutdown the agent (will never happen)
+$agent->shutdown();
+
+
+exit 0;
+
+
+##########
+
+
+# Get the data
+sub getData() {
+	&message('I', 'Parsing the log file...') if ($DEBUG > 0);
+
+	# Get the last log file
+	opendir DIR, $dir or die 'Can not open directory!';
+	my @files = readdir(DIR);
+	closedir DIR or die 'Can not close directory!';
+
+	my $file = '';
+	foreach my $f (sort @files) {
+		if ($f =~ /$file_pattern/) {
+			$file = $f;
+		}
+	}
+
+	# Build the regulare expression for last N seconds
+	my $date_expr = '\[(';
+	my $mins = int(($period/60)+0.5);
+	foreach my $n (0..$mins) {
+		$date_expr .= `date "+$date_format" -d "-$n min"`;
+		chomp $date_expr;
+		if ($n < $mins) {
+			$date_expr .= '|';
+		}
+	}
+	$date_expr .= ')';
+
+	# Go through the log file
+	my $cmd = "egrep '$date_expr' $dir/$file | sed -r 's/$value_regexp/\\$code_index \\$resp_index/' |";
+	&message(undef, '   * Cmd: '.$cmd) if ($DEBUG > 0);
+	open F, $cmd or die 'Can not open the file!';
+	while (my $line = <F>) {
+		chomp $line;
+		my ($code, $resp) = split / /, $line;
+		if ($code > 1 and $code < 6) {
+			$cnt{$code} += 1;
+			$response += $resp =~ /\d+/ ? $resp : 0;
+			$hits++;
+		}
+	}
+	close F or die 'Can not close the file!';
+
+	if ($DEBUG > 0) {
+		&message(undef, '   * total num hits: '.$hits);
+		&message(undef, '   * avg resp time:  '.($hits > 0 ? int($response/$hits) : 0));
+		&message(undef, '   * code 2xx:       '.$cnt{'2'});
+		&message(undef, '   * code 3xx:       '.$cnt{'3'});
+		&message(undef, '   * code 4xx:       '.$cnt{'4'});
+		&message(undef, '   * code 5xx:       '.$cnt{'5'});
+	}
+}
+
+
+# Return the number responses for specified code
+sub getValue() {
+	my $code = shift;
+
+	return $cnt{$code} || 0;
+}
+
+
+# Function to handle the SNMP requests
+sub myHandler() {
+	# Input parameters
+	my $handler = shift;
+	my $registration_info = shift;
+	my $request_info = shift;
+	my $requests = shift;
+
+	my $request;
+
+	for ($request = $requests; $request; $request = $request->next()) {
+		my $oid = $request->getOID();
+		if ($request_info->getMode() == MODE_GET) {
+			&setRequest('GET', $oid, $request);
+		} elsif ($request_info->getMode() == MODE_GETNEXT) {
+			&setRequest('GETNEXT', $oid, $request);
+		}
+	}
+}
+
+
+# Set the value of the OID request
+sub setRequest() {
+	my $type = shift;
+	my $oid = shift;
+	my $request = shift;
+
+	if (&compareOID($type, $oid, $OID.'.1')) {
+		# Total number of hits
+		$request->setOID($OID.'.1') if ($type eq 'GETNEXT');
+		my $hits = 0;
+		foreach my $n (2..5) {
+			$hits += int($cnt{$n});
+		}
+		$request->setValue(ASN_INTEGER, int $hits);
+	} elsif (&compareOID($type, $oid, $OID.'.2')) {
+		# Average response time
+		$request->setOID($OID.'.2') if ($type eq 'GETNEXT');
+		$request->setValue(ASN_INTEGER, ($hits > 0 ? int($response/$hits) : 0));
+	} else {
+		# Number of hits per type (2xx, 3xx, 4xx and 5xx)
+		foreach my $n (2..5) {
+			if (&compareOID($type, $oid, $OID.'.'.$n.'00')) {
+				$request->setOID($OID.'.'.$n.'00') if ($type eq 'GETNEXT');
+				$request->setValue(ASN_INTEGER, int &getValue($n));
+				last;
+			}
+		}
+	}
+}
+
+
+# Show help message
+sub help() {
+	printf "Usage: %s [options] --dir <dir_path> --pattern <file_pattern> --instance <instance>\n\n", $0;
+	print 'Options:'."\n";
+	print '  -d, --dir=STR       directory with the log files'."\n";
+	print '  -p, --pattern=STR   regexp pattern of the log file'."\n";
+	print '                      (default: last file from sorted list)'."\n";
+	print '  -i, --instance=NUM  application instance'."\n";
+	print '  -v, --value=STR     regexp to get the value'."\n";
+	print '                      (default: .* ([2345]).. .* .* ".?*"$)'."\n";
+	print '  -c, --codeidx=NUM   status code index (default: 1)'."\n";
+	print '  -r, --respidx=NUM   respons time index (default: 2)'."\n";
+	print '  -f, --format=STR    date format of the log file'."\n";
+	print '                      (default: %d/%b/%Y:%H:%M)'."\n";
+	print '  -e, --debug         debug mode'."\n";
+	print '  -h, --help          display this help and exit'."\n\n";
+	print 'Examples:'."\n";
+	printf " \$ %s -d /opt/apache/logs -p 'main_access\..*' -i 1\n", $0;
+	printf " \$ %s -d /var/log -p 'messages.log\$' -i 1\n", $0;
+}
+
+
+#######################
+##### COMMONS ## #####
+################  ###
+                   #
+
+# Compare requested OID with one of the possible OIDs
+sub compareOID() {
+	my $type = shift;
+	my $oid = shift;
+	my $oid_comp = shift;
+
+	my $ret = 0;
+
+	if ($type eq 'GETNEXT') {
+		if ($oid < new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	} else {
+		if ($oid == new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	}
+
+	return $ret;
+}
+
+
+# Show message
+sub message() {
+	my $type = shift;
+	my $text = shift;
+
+	my $date = `date '+%F %T'`;
+	chomp $date;
+
+	# Append colon to the type
+	$type = (defined $type) ? $type.': ' : '';
+
+	printf "[%s] [PID=%d] %s%s\n", $date, $$, $type, $text;
+}
+
+
+# Read default values from config file
+sub readDefaults() {
+	my %cfg;
+
+	if (-e $defaults_file) {
+		# To continue reading of the value on the next line
+		my $continue = 0;
+		my $key;
+
+		#&message('D', 'Reading defaults');
+		open F, $defaults_file or die 'Can not open defaults file!';
+		while (my $line = <F>) {
+			# Continue reading of the value
+			if ($continue == 1) {
+				if ($line =~ /^(.*)\\$/) {
+					$cfg{$key} .= $1;
+				} else {
+					$cfg{$key} .= $line;
+					chomp $cfg{$key};
+					$continue = 0;
+					#&message('D', '   *  '.$key.'='.$cfg{$key});
+				}
+			}
+			# Read new value
+			if ($continue == 0 and $line =~ /^\s*([A-Z0-9_]+?)\s*=\s*(.*?)(\\|)$/) {
+				$key = $1;
+				my $val = $2;
+
+				$cfg{$key} = $val;
+
+				if ($line =~ /^.*\\$/) {
+					$continue = 1;
+				} else {
+					#&message('D', '   *  '.$key.'='.$val);
+				}
+			}
+		}
+		close F or die 'Can not close defaults file!';
+	} else {
+		#&message('E', 'Defaults do not exist!');
+	}
+
+	return %cfg;
+}

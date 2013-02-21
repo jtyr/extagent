@@ -1,0 +1,6 @@
+/var/log/extagent/*.log {
+    size=5M
+    weekly
+    notifempty
+    missingok
+}

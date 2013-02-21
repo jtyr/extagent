@@ -1,0 +1,890 @@
+#!/usr/bin/perl
+
+
+#####
+#
+# Description:
+# ============
+#
+# This is SNMP extension agent for Java Garbage Collector monitoring.
+#
+#####
+#
+# Created by: <jiri(dot)tyr(at)gmail(dot)com>
+#
+#####
+
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Time::Local;
+use Storable qw(retrieve store);
+use NetSNMP::agent (':all');
+use NetSNMP::ASN qw(ASN_INTEGER);
+use threads;
+use threads::shared;
+
+
+# Flush output immidiately
+$| = 1;
+
+
+# File with default values
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_javaapp_gc.conf';
+# Read default values from file
+my %CFG = &readDefaults();
+
+
+# Application instance
+my $instance;
+# Log file
+my $file = $CFG{'FILE'};
+# User name
+my $user = $CFG{'USER'};
+# Grep expression
+my $grep = $CFG{'GREP'} || 'java';
+# Path to the tmp directory
+my $tmp_path = $CFG{'TMP_PATH'} || '/tmp';
+# Debug variable
+my $DEBUG = $CFG{'DEBUG'} || 0;
+# To show help
+my $help = 0;
+
+# Read the command line options
+GetOptions (
+	'i|instance=i'	=> \$instance,
+	'f|file=s'	=> \$file,
+	'u|user=s'	=> \$user,
+	'g|grep=s'	=> \$grep,
+	't|tmp=s'	=> \$tmp_path,
+	'e|debug'	=> \$DEBUG,
+	'h|help'	=> \$help
+);
+
+# Verify input params
+if ($help == 1) {
+	&help();
+	exit 0;
+}
+unless (defined $instance or defined $file or defined $user) {
+	print 'ERROR: Missing parameter!'."\n";
+	&help();
+	exit 1;
+}
+
+
+# Data structure where the data are saved
+my $struct;
+# Data structure for storing the raw records
+my %records;
+# Data structure for data which will be stored in a file
+my %params;
+# Timestamp of the last log parsing
+my $prev_timestamp = 0;
+# Maximum time between the collections in seconds (4 minutes)
+my $max_time = $CFG{'MAX_TIME'} || 240;
+# Parse only last N seconds (300 = 5 mins)
+my $period = $CFG{'PERIOD'} || 300;
+# Random sleep at the start of the script
+my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
+# Name of the agent
+my $NAME = $CFG{'NAME'} || 'javaapp_gc';
+# Command to grep only the right GC lines
+my $gc_grep = 'grep -P \'(GC.*->|^\s+(?:perm\s+gen|PSPermGen\s+gen|PSPermGen)\s+total\s+\d+K,\s+used\s+\d+K)\'';
+# Command to grep PID from the PS list
+my $ps_pid = 'ps -o pid,comm -u '.$user.' | grep '.$grep.' | awk \'{print $1}\'';
+# Command to grep time from the PS list
+my $ps_time = 'ps -o lstart= -p';
+# Command to grep memory usage from the PS list
+my $ps_vmem = 'ps -o vsz= -p';
+# Pid of the Java process
+my $java_pid = 0;
+# Running time of the process
+my $running_time :shared;
+# Process virtual memory consumation
+my $vmem :shared;
+# Last known Permanent memory consumation
+my $pmem :shared = 0;
+# How many last records to store
+my $keep_records = 10;
+# OID of the agent
+my $OID = ($CFG{'OID'} ||
+          '1.3.6.1.4.1.8072.9999.9999.5.3').'.'.$instance;
+#                      |    |    |    | |       |
+#                      |    |    |    | |       +--- app instance
+#                      |    |    |    | +----------- GC
+#                      |    |    |    +------------- javaapp
+#                      |    |    +------------------ netSnmpPlaypen
+#                      |    +----------------------- netSnmpExperimental
+#                      +---------------------------- NET-SNMP-MIB
+
+
+###
+# Transient = short term
+# Tenured   = long term
+###
+
+### Full GC record regexp
+#0.0: [Full GC 0.0: [Tenured: 0K->0K(0K), 0.0 secs] 0K->0K(0K), [Perm : 0K->0K(0K)], 0.0 secs]
+#0.0: [Full GC 0K->0K(0K), 0.0 secs]
+#0.0: [Full GC [PSYoungGen: 0K->0K(0K)] [ParOldGen: 0K->0K(0K)] 0K->0K(0K) [PSPermGen: 0K->0K(0K)], 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+#0.0: [Full GC [PSYoungGen: 0K->0K(0K)] [PSOldGen: 0K->0K(0K)] 0K->0K(0K) [PSPermGen: 0K->0K(0K)], 0.0 secs]
+#0.0: [Full GC [PSYoungGen: 0K->0K(0K)] [PSOldGen: 0K->0K(0K)] 0K->0K(0K) [PSPermGen: 0K->0K(0K)], 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+#0.0: [Full GC (System) 0.0: [CMS: 0K->0K(0K), 0.0 secs] 0K->0K(0K), [CMS Perm : 0K->0K(0K)], 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+#0.0: [Full GC (System) [PSYoungGen: 0K->0K(0K)] [PSOldGen: 0K->0K(0K)] 0K->0K(0K) [PSPermGen: 0K->0K(0K)], 0.0 secs]
+#0.0: [Full GC (System) [PSYoungGen: 0K->0K(0K)] [PSOldGen: 0K->0K(0K)] 0K->0K(0K) [PSPermGen: 0K->0K(0K)], 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+my $FULL_GC_PARSE_RE = qr/
+   ^(\d+(?:\.\d+)?):\s+					# 1: Time of event
+   \[(Full\sGC)\s+					# 2: Type
+      (?:\(System\)\s+)?				# Java 6 appears to have this string - skip it
+      (?:(?:(\d+(?:\.\d+)?):\s+)?			# 3: Tenured start time
+         (?:\[Transient:[^\]]+\]\s+)?			# Skip transient memory pool
+         \[Tenured:\s+
+            (\d+)K->(\d+)K\s*\((\d+)K\)			# 4, 5, 6: Tenured memory pool
+            (?:,\s+(\d+(?:\.\d+)?)\s+(secs|ms))?	# 7, 8: Tenured memory collection time
+         \]\s+
+      )?						# Whole block is optional
+      (\d+)K->(\d+)K\s*\((\d+)K\)			# 9, 10, 11: Total memory
+      (?:,?\s+\[Permanent:\s+\d+K->(\d+)K\(\d+K\)\])?	# 12: Permanent memory
+      ,\s+(\d+\.\d+)\s+(secs|ms)			# 13, 14: Total collection time
+   \]
+   /xo;
+
+### Partial GC record regexp
+#0.0: [GC 0.0: [DefNew: 0K->0K(0K), 0.0 secs]0.0: [Tenured: 0K->0K(0K), 0.0 secs] 0K->0K(0K), 0.0 secs]
+#0.0: [GC 0.0: [DefNew: 0K->0K(0K), 0.0 secs] 0K->0K(0K), 0.0 secs]
+#0.0: [GC 0.0: [ParNew: 0K->0K(0K), 0.0 secs] 0K->0K(0K)0.0: [CMS-concurrent-abortable-preclean: 0.0/0.0 secs], 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+#0.0: [GC 0.0: [ParNew: 0K->0K(0K), 0.0 secs] 0K->0K(0K), 0.0 secs]
+#0.0: [GC 0.0: [ParNew: 0K->0K(0K), 0.0 secs] 0K->0K(0K), 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+#0.0: [GC 0K->0K(0K), 0.0 secs]
+#0.0: [GC [PSYoungGen: 0K->0K(0K)] 0K->0K(0K), 0.0 secs]
+#0.0: [GC [PSYoungGen: 0K->0K(0K)] 0K->0K(0K), 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+#0.0: [GC-- [PSYoungGen: 0K->0K(0K)] 0K->0K(0K), 0.0 secs] [Times: user=0.0 sys=0.0, real=0.0 secs]
+my $PARTIAL_GC_PARSE_RE = qr/
+   ^(\d+(?:\.\d+)?):\s+					# 1: Time of event
+   \[(GC(?:\-\-)?)					# 2: Type
+      (?:(?:\s+(\d+(?:\.\d+)?):)?			# 3: Tenured start time
+         \s+\[Transient:\s+
+            (\d+)K->(\d+)K\s*\((\d+)K\)			# 4, 5, 6: Transient memory pool
+            (?:,\s+(\d+(?:\.\d+)?)\s+(secs|ms))?	# 7, 8: Transient memory pool collection time (optional)
+         \]
+      )?						# Whole block is optional
+      (?:(?:\s*(\d+(?:\.\d+)?):)?\s+			# 9: End time of the event (1 + 7) (optional)
+         \[Tenured:\s+
+            (\d+)K->(\d+)K\s*\((\d+)K\)			# 10, 11, 12: Tenured memory pool
+            (?:,\s+(\d+(?:\.\d+)?)\s+(secs|ms))?	# 13, 14: Tenured memory pool collection time
+         \]
+      )?\s+						# Whole block is optional
+      (\d+)K->(\d+)K\s*\((\d+)K\)			# 15, 16, 17: Total memory
+      ,\s+(\d+\.\d+)\s+(secs|ms)			# 18, 19: Total collection time
+   \]
+   /xo;
+
+### BEA GC record regexp
+#[memory ] 0.0-0.0: GC 0K->0K (0K), 0.0 ms
+#[memory ] 0.0: parallel nursery GC 0K->0K (0K), 0.0 ms
+#[memory ][Mon Jan  0 0:0:0 0][0] 0.0-0.0: GC 0K->0K (0K), 0.0 ms
+#[memory ][Mon Jan  0 0:0:0 0][0] 0.0: parallel nursery GC 0K->0K (0K), 0.0 ms
+my $UNNORMALIZED_BEA_GC_PARSE_RE = qr/
+   # At the beginning there could be a timestamp and a PID.
+   ^\[memory\s*\]
+   (?:\[.*?\]\[\d+\])?					# Skip timestamp and PID (optional)
+   \s+(\d+(?:\.\d+)?)(?:-\d+?(?:\.\d+)?)?		# 1: Time of event
+   :\s+(parallel\snursery\sGC|GC)			# 2: Type
+   (							# 3: Take the rest with all the values
+      (?:\s+\[.*\])?
+      \s+\d+K->\d+K\s*\(\d+K\)
+      ,(?:\s+\[.*\])?\s+\d+?(?:\.\d+)?
+      \s+(?:ms|secs)
+   )
+   /xo;
+
+
+&message('I', '### Starting agent PID '.$$) if ($DEBUG > 0);
+&message('I', 'OID: '.$OID) if ($DEBUG > 0);
+
+
+# Create an agent
+my $agent = new NetSNMP::agent(
+	# makes the agent read a my_agent_name.conf file
+	'Name'		=> $NAME,
+	'AgentX'	=> 1
+);
+
+
+# Sleep to spread the load at the start time of the daemon
+&message('I', 'Sleeping '.$sleep.'s') if ($DEBUG > 0);
+sleep($sleep);
+
+
+# Register the agent
+$agent->register($NAME, $OID, \&myHandler) or die 'Can not register client!';
+
+
+# Wait for requests in infinite loop
+while (1) {
+	# Check when was the last parsing
+	my $curr_timestamp = time;
+
+	if ($curr_timestamp - $prev_timestamp > $max_time) {
+		# Reset values
+		%records = ('tenured' => [], 'transient' => []);
+		$struct = undef;
+
+		# Get Java PID
+		$java_pid = &getJavaPid();
+
+		# Read stored params from file
+		my $params_file = $tmp_path.'/gc_'.$java_pid.'.dat';
+		if (-e $params_file) {
+			%params = %{retrieve $params_file};
+		} else {
+			# If the file doesn't exist, reset the %params
+			%params = ();
+		}
+
+		my $struct_file = $tmp_path.'/gc_'.$java_pid.'_struct.dat';
+
+		# Delete the old params file if Java PID has changed
+		if (exists $params{'java_pid'} and $params{'java_pid'} ne $java_pid) {
+			unlink $tmp_path.'/gc_'.$params{'java_pid'}.'.dat';
+		} else {
+			$params{'java_pid'} = $java_pid;
+		}
+
+		# Get new values only if there is a PID
+		if ($java_pid > 0) {
+			# Create a thread to read the data
+			threads->create(sub {
+				&message('I', 'Starting thread (TID: '.threads->tid().')') if ($DEBUG > 0);
+
+				# Read the log file
+				&getData();
+
+				# Store all params into the file
+				store \%params, $params_file;
+
+				# Compute the final values
+				&computeResults();
+
+				# Store the results for the parent thread
+				# Explanation: threads::shared can not handle complex data structures without shared_clone() function)
+				store $struct, $tmp_path.'/gc_'.$java_pid.'_struct.dat';
+
+				&message('I', 'Finishing thread (TID: '.threads->tid().')') if ($DEBUG > 0);
+				#threads->exit();
+			})->detach();
+
+			$prev_timestamp = $curr_timestamp;
+		}
+	}
+
+	my $struct_file = $tmp_path.'/gc_'.$java_pid.'_struct.dat';
+
+	# Restore the results from the child process
+	if (-e $tmp_path.'/gc_'.$java_pid.'_struct.dat' and $java_pid > 0) {
+		$struct = retrieve $struct_file;
+
+		# Delete the file
+		unlink $struct_file;
+	}
+
+	$agent->agent_check_and_process(1);
+}
+
+
+# Shutdown the agent (will never happen)
+$agent->shutdown();
+
+
+exit 0;
+
+
+##########
+
+# Parse the log file
+sub getData() {
+	&message('I', 'Reading values...') if ($DEBUG > 0);
+
+	# Remember the current time
+	my $processing_start = time;
+
+	# Read the process running time
+	$running_time = &getProcessRunningTime();
+
+	# By default read the data from the beginning of the file
+	my $last_record = 0;
+	# Otherwise read the data from last 5 mins only
+	if ($running_time > $period) {
+		$last_record = $running_time - $period;
+	}
+
+	# Read the file
+	open F, $gc_grep.' '.$file.' |' or die 'Can not open log file!';
+	while (my $line = <F>) {
+		# Try to find information about the Permanent memory consumation
+		if ($line =~ /^\s+(?:perm\s+gen|PSPermGen\s+gen|PSPermGen)\s+total\s+\d+K,\s+used\s+(\d+)K/) {
+			$pmem = $1;
+		}
+
+		# Take only lines in the last N seconds (see $period above)
+		if (($line =~ /^(\d+)\.\d+:/ or $line =~ /.*\]\s+(\d+)\.\d+/) and $1 > $last_record) {
+			# Common variables
+			my ($start, $type, $time, $time_unit);
+			# Transient GC variables
+			my ($tr_before, $tr_after, $tr_size, $tr_start, $tr_time, $tr_time_unit);
+			# Tenured GC variables
+			my ($te_before, $te_after, $te_size, $te_start, $te_time, $te_time_unit);
+			# Total memory variables
+			my ($to_before, $to_after, $to_size,            $to_time, $to_time_unit);
+
+			# Normalize the lines
+			$line =~ s/(?:(CMS\s+)?Perm|PSPermGen).*?:/Permanent:/i;
+			$line =~ s/(?:CMS|Tenured|PSOldGen|ParOldGen).*?:/Tenured:/i;
+			$line =~ s/(?:DefNew|ParNew|PSYoungGen).*?:/Transient:/i;
+
+			# Transform BEA format into the normalized Full or Partial GC format
+			if ($line =~ $UNNORMALIZED_BEA_GC_PARSE_RE) {
+				my $t = 'GC';
+
+				# Normalize type to GC, Full GC
+				if ($2 eq 'GC') {
+					$t = 'Full GC';
+				}
+
+				# Re-create the line
+				$line = $1.': ['.$t.$3.']';
+
+				# Remove non-standard white space
+				$line =~ s/(\d+K->\d+K)\s+(\(\d+K\))/$1$2/g;
+			}
+
+			# Read values
+			if ($line =~ $FULL_GC_PARSE_RE) {
+				# Assign values (Tenured only)
+				$start		= $1;
+				$type		= $2;
+				$te_start	= $3;
+				$te_before	= $4;
+				$te_after	= $5;
+				$te_size	= $6;
+				$te_time	= $7;
+				$te_time_unit	= $8;
+				$to_before	= $9;
+				$to_after	= $10;
+				$to_size	= $11;
+				$pmem		= $12 if (defined $12);
+				$to_time	= $13;
+				$to_time_unit	= $14;
+
+				if (defined $te_after) {
+					# Transient breakdowns can be calculated if we have detailed information on Tenured
+					$tr_before = $to_before - $te_before;
+					$tr_after = $to_after - $te_after;
+					$tr_size = $to_size - $te_size;
+				} else {
+					# In absence of detailed information, we use only the total memory information
+					$tr_before = $to_before;
+					$tr_after = $to_after;
+					$tr_size = $to_size;
+				}
+
+				# Re-create some values from the data what we have
+				unless (defined $te_start) {
+					$te_start = $start;
+				}
+				unless (defined $te_after) {
+					$te_after = $to_after;
+				}
+				unless (defined $te_before) {
+					$te_before = $to_before;
+				}
+				unless (defined $te_size) {
+					$te_size = $to_size;
+				}
+				if (defined $te_time_unit) {
+					$time_unit = $te_time_unit;
+				} else {
+					$time_unit = $to_time_unit;
+				}
+				if (defined $te_time) {
+					$time = $te_time;
+				} else {
+					$time = $to_time;
+				}
+			} elsif ($line =~ $PARTIAL_GC_PARSE_RE) {
+				# Assign values (Transient & Tenured)
+				$start		= $1;
+				$type		= $2;
+				$tr_start	= $3;
+				$tr_before	= $4;
+				$tr_after	= $5;
+				$tr_size	= $6;
+				$tr_time	= $7;
+				$tr_time_unit	= $8;
+				$te_start	= $9;
+				$te_before	= $10;
+				$te_after	= $11;
+				$te_size	= $12;
+				$te_time	= $13;
+				$te_time_unit	= $14;
+				$to_before	= $15;
+				$to_after	= $16;
+				$to_size	= $17;
+				$to_time	= $18;
+				$to_time_unit	= $19;
+
+				if (defined $te_time and not defined $te_start) {
+					# For incomplete records
+					$te_start = $start;
+				} elsif (defined $tr_before) {
+					# Tenured breakdowns can be calculated if we have detailed information on Transient
+					$te_before = $to_before - $tr_before;
+					$te_after = $to_after - $tr_after;
+					$te_size = $to_size - $tr_size;
+				} else {
+					# In absence of detailed information, we use only the total memory information
+					$te_before = $to_before;
+					$te_after = $to_after;
+					$te_size = $to_size;
+				}
+
+				# Re-create some values from the data what we have
+				unless (defined $te_start) {
+					$te_start = $start;
+				}
+				unless (defined $tr_start) {
+					$tr_start = $start;
+				}
+				unless (defined $tr_after) {
+					$tr_after = $to_after;
+				}
+				unless (defined $tr_before) {
+					$tr_before = $to_before;
+				}
+				unless (defined $tr_size) {
+					$tr_size = $to_size;
+				}
+				if (defined $tr_time_unit) {
+					$time_unit = $tr_time_unit;
+				} else {
+					$time_unit = $to_time_unit;
+				}
+				if (defined $tr_time) {
+					$time = $tr_time;
+				} else {
+					$time = $to_time;
+				}
+			} else {
+				&message('E', 'Unknown GC format: '.$line);
+			}
+
+			# Convert miliseconds to seconds
+			if ($time_unit eq 'ms') {
+				$time *= 1000;
+			}
+
+			# Store the record by its type
+			if (defined $te_start and defined $te_before and defined $te_after and defined $te_size and defined $time) {
+				# Tenured record
+				my $record = {
+					'start'		=> $te_start,
+					'before'	=> $te_before,
+					'after'		=> $te_after,
+					'size'		=> $te_size,
+					'time'		=> $time
+				};
+
+				push @{$records{'tenured'}}, $record;
+			}
+			if (defined $tr_start and defined $tr_before and defined $tr_after and defined $tr_size and defined $time) {
+				# Transient record
+				my $record = {
+					'start'		=> $tr_start,
+					'before'	=> $tr_before,
+					'after'		=> $tr_after,
+					'size'		=> $tr_size,
+					'time'		=> $time
+				};
+
+				push @{$records{'transient'}}, $record;
+			}
+		}
+	}
+	close F or die 'Can not close log file!';
+
+
+	# Store the last know Permanent memory
+	$params{'pmem'} = $pmem;
+
+
+	# Store the last 10 records
+	foreach my $type (keys %records) {
+		# Number of records
+		my $num = scalar(@{$records{$type}});
+
+		# Label for the last10 hash
+		my $last10 = 'last10_'.$type;
+
+		if ($num > 0) {
+			if ($num < $keep_records and exists $params{$last10} and scalar @{$params{$last10}} > 0) {
+				# If there is not enough of new records, leave some records from the previous run in the last10 array
+				splice @{$params{$last10}}, 0, $keep_records - $num;
+			} else {
+				# Reset previous values
+				$params{$last10} = ();
+			}
+
+			# Calculate the begining of the last 10 records
+			my $from = 0;
+			if ($num >= $keep_records) {
+				$from = $num - $keep_records;
+			}
+
+			# Add new records
+			push @{$params{$last10}}, @{$records{$type}}[($from)..($num - 1)];
+
+			&message('I', 'Length of '.$last10.': '.scalar(@{$params{$last10}}).' (keep_records='.$keep_records.')') if ($DEBUG > 0);
+		}
+	}
+
+
+	# Read process virtual memory consumation
+	$vmem = `$ps_vmem $java_pid`;
+	chomp $vmem;
+
+	# End of processing
+	my $processing_end = time;
+
+	# The last record could be inserted after we read the running_time, so we need to add the durration of the processing
+	$running_time += $processing_end - $processing_start;
+
+
+	if ($DEBUG > 0) {
+		&message('I', 'Last known Permanent memory: '.$pmem.' KB');
+		&message('I', 'Virtual memory: '.$vmem.' KB') if ($DEBUG > 0);
+		&message('I', 'Data processing time: '.($processing_end - $processing_start).' seconds');
+		&message('I', 'Number of records:');
+		&message(undef, '   * Tenured:   '.scalar(@{$records{'tenured'}}));
+		&message(undef, '   * Transient: '.scalar(@{$records{'transient'}}));
+	}
+}
+
+
+# Compute the final results
+sub computeResults() {
+	# Current time
+	my $now = time;
+
+	foreach my $type (keys %records) {
+		# Default values
+		my $before = 0;
+		my $after = 0;
+		my $change_pct = 0;
+		my $avg_time_btw_l10c = 0;
+		my $time_since_last = 0;
+		my $pct_time_spent_l10c = 0;
+		my $avg_time_spent_l10c = 0;
+		my $pct_time_spent_l5m = 0;
+		my $avg_time_spent_l5m = 0;
+		my $num = scalar @{$records{$type}};
+
+		if ($num > 0) {
+			# Pointer to the last record
+			my $last_record = $records{$type}->[$num - 1];
+			# Pointer to the last10_type
+			my $last10 = $params{'last10_'.$type};
+			# Length of the last10_type
+			my $last10_len = scalar @{$last10};
+
+
+			# Process memory before and after GC
+			$before = $last_record->{'before'};
+			$after = $last_record->{'after'};
+
+			# The percentage of the memory pool used
+			if ($type eq 'tenured') {
+				$change_pct = int(100 * ($last_record->{'after'} / $last_record->{'size'}) + 0.5);
+			}
+
+			# Average number of seconds between the last 10 collections
+			my $avg_time_btw_l10c_sum = 0;
+			for (my $i=0; $i<($last10_len - 1); $i++) {
+				$avg_time_btw_l10c_sum += $last10->[$i + 1]->{'start'} - $last10->[$i]->{'start'};
+			}
+			$avg_time_btw_l10c = int($avg_time_btw_l10c_sum / (($last10_len - 1) || 1) + 0.5);
+
+			# Time since last GC
+			$time_since_last = int($running_time - $last_record->{'start'} + 0.5);
+
+			# Time spent in GC by the last 10 collections
+			my $time_spent_l10c_sum = 0;
+			foreach my $r (@{$last10}) {
+				$time_spent_l10c_sum += $r->{'time'};
+			}
+			$pct_time_spent_l10c = int(100 * ($time_spent_l10c_sum / $period) + 0.5);
+			$avg_time_spent_l10c = int($time_spent_l10c_sum / $num + 0.5);
+
+			# Time spent in GC in the last 5 minutes
+			my $time_spent_l5m_sum = 0;
+			foreach my $r (@{$records{$type}}) {
+				$time_spent_l5m_sum += $r->{'time'};
+			}
+			$pct_time_spent_l5m = int(100 * ($time_spent_l5m_sum / $period) + 0.5);
+			$avg_time_spent_l5m = int($time_spent_l5m_sum / $num + 0.5);
+		}
+
+		my $record = {
+			'before'		=> $before,
+			'after'			=> $after,
+			'change_pct'		=> $change_pct,
+			'avg_time_btw_l10c'	=> $avg_time_btw_l10c,
+			'time_since_last'	=> $time_since_last,
+			'pct_time_spent_l10c'	=> $pct_time_spent_l10c,
+			'avg_time_spent_l10c'	=> $avg_time_spent_l10c,
+			'pct_time_spent_l5m'	=> $pct_time_spent_l5m,
+			'avg_time_spent_l5m'	=> $avg_time_spent_l5m,
+			'count_l5m'		=> $num
+		};
+
+		$struct->{$type} = $record;
+
+		if ($DEBUG > 0) {
+			&message('I', 'Calculated values ('.$type.'):');
+			&message(undef, '   * Memory before GC:                    '.$struct->{$type}->{'before'}.' KB');
+			&message(undef, '   * Memory after GC:                     '.$struct->{$type}->{'after'}.' KB');
+			&message(undef, '   * Pct of mem pool used:                '.$struct->{$type}->{'change_pct'}.'%');
+			&message(undef, '   * Avg time btw last 10 GCs:            '.$struct->{$type}->{'avg_time_btw_l10c'}.' sec');
+			&message(undef, '   * Time since last GC:                  '.$struct->{$type}->{'time_since_last'}.' sec');
+			&message(undef, '   * Pct of time spent in last 10 GCs:    '.$struct->{$type}->{'pct_time_spent_l10c'}.'%');
+			&message(undef, '   * Avg of time spent in last 10 GCs:    '.$struct->{$type}->{'avg_time_spent_l10c'}.' sec');
+			&message(undef, '   * Pct of time spent in last 5 minutes: '.$struct->{$type}->{'pct_time_spent_l5m'}.'%');
+			&message(undef, '   * Avg of time spent in last 5 minutes: '.$struct->{$type}->{'avg_time_spent_l5m'}.' sec');
+			&message(undef, '   * Total number of collections:         '.$struct->{$type}->{'count_l5m'});
+		}
+	}
+}
+
+
+# Return PID of the Java process
+sub getJavaPid() {
+	my $pid = int(`$ps_pid`);
+
+	&message('I', 'Java PID: '.$pid) if ($DEBUG > 0);
+
+	return $pid;
+}
+
+
+# Returns time when process started
+sub getProcessRunningTime() {
+	# Run a command to get the process execution time
+	my $cmd = 'date --date="`'.$ps_time.' '.$java_pid.'`" +%s';
+	my $time = time - int(`$cmd`);
+
+	&message('I', 'Process run time: '.$time.' seconds ('.int($time/86400).' days)') if ($DEBUG > 0);
+
+	return $time;
+}
+
+
+# Function to handle the SNMP requests
+sub myHandler() {
+	# Input parameters
+	my $handler = shift;
+	my $registration_info = shift;
+	my $request_info = shift;
+	my $requests = shift;
+
+	my $request;
+
+	for ($request = $requests; $request; $request = $request->next()) {
+		my $oid = $request->getOID();
+		if ($request_info->getMode() == MODE_GET) {
+			&setRequest('GET', $oid, $request);
+		} elsif ($request_info->getMode() == MODE_GETNEXT) {
+			&setRequest('GETNEXT', $oid, $request);
+		}
+	}
+}
+
+
+# Set the value of the OID request
+sub setRequest() {
+	my $type = shift;
+	my $oid = shift;
+	my $request = shift;
+
+	foreach my $t (keys %{$struct}) {
+		# Record type number (tenured=1, transient=2)
+		my $n = 1;
+		if ($t eq 'transient') {
+			$n = 2;
+		}
+
+		my $last = 0;
+
+		# All possbile values
+		for (my $i=1; $i<=13; $i++) {
+			if (&compareOID($type, $oid, $OID.'.'.$n.'.'.$i)) {
+				$request->setOID($OID.'.'.$n.'.'.$i) if ($type eq 'GETNEXT');
+
+				if ($i == 1) {
+					# Start time of the JVM process
+					$request->setValue(ASN_INTEGER, int $running_time/86400);
+				} elsif ($i == 2) {
+					# Virtual memory (memory consumation of the JVM process)
+					$request->setValue(ASN_INTEGER, int $vmem);
+				} elsif ($i == 3) {
+					# Permanent memory
+					$request->setValue(ASN_INTEGER, int $pmem);
+				} elsif ($i == 4) {
+					# Memory before GC
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'before'});
+				} elsif ($i == 5) {
+					# Memory after GC
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'after'});
+				} elsif ($i == 6) {
+					# The percentage of the memory pool used
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'change_pct'});
+				} elsif ($i == 7) {
+					# Average number of seconds between the last 10 collections
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'avg_time_btw_l10c'});
+				} elsif ($i == 8) {
+					# Seconds since the last GC collection
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'time_since_last'});
+				} elsif ($i == 9) {
+					# Percentage of time spent in GC by the last 10 collections
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'pct_time_spent_l10c'});
+				} elsif ($i == 10) {
+					# Average number of seconds spent in GC by the last 10 collections
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'avg_time_spent_l10c'});
+				} elsif ($i == 11) {
+					# Percentage of time spent in GC in the last 5m
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'pct_time_spent_l5m'});
+				} elsif ($i == 12) {
+					# Seconds spent doing GC in the last 5m
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'avg_time_spent_l5m'});
+				} elsif ($i == 13) {
+					# Number of collections in the last 5m
+					$request->setValue(ASN_INTEGER, int $struct->{$t}->{'count_l5m'});
+				}
+
+				# To finish the outer loop
+				$last = 1;
+
+				last;
+			}
+		}
+
+		# Finish the outer loop
+		if ($last == 1) {
+			last;
+		}
+	}
+}
+
+
+# Show help message
+sub help() {
+	printf "Usage: %s [options] --file <file> --user <user> --instance <instance>\n\n", $0;
+	print 'Options:'."\n";
+	print '  -i, --instance=NUM  application instance'."\n";
+	print '  -f, --file=STR      path to the log file'."\n";
+	print '  -u, --user=STR      user name under which the app is running'."\n";
+	print '  -g, --grep=STR      grep expression for the process (default: java)'."\n";
+	print '  -t, --tmp=STR       path to the tmp directory (default: /tmp)'."\n";
+	print '  -e, --debug         debug mode'."\n";
+	print '  -h, --help          display this help and exit'."\n\n";
+	print 'Examples:'."\n";
+	printf " \$ %s -f /opt/user1/live_jboss/bin/gc.log -u user1 -i 1\n", $0;
+}
+
+
+#######################
+##### COMMONS ## #####
+################  ###
+                   #
+
+# Compare requested OID with one of the possible OIDs
+sub compareOID() {
+	my $type = shift;
+	my $oid = shift;
+	my $oid_comp = shift;
+
+	my $ret = 0;
+
+	if ($type eq 'GETNEXT') {
+		if ($oid < new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	} else {
+		if ($oid == new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	}
+
+	return $ret;
+}
+
+
+# Show message
+sub message() {
+	my $type = shift;
+	my $text = shift;
+
+	my $date = `date '+%F %T'`;
+	chomp $date;
+
+	# Append colon to the type
+	$type = (defined $type) ? $type.': ' : '';
+
+	printf "[%s] [PID=%d] %s%s\n", $date, $$, $type, $text;
+}
+
+
+# Read default values from config file
+sub readDefaults() {
+	my %cfg;
+
+	if (-e $defaults_file) {
+		# To continue reading of the value on the next line
+		my $continue = 0;
+		my $key;
+
+		#&message('D', 'Reading defaults');
+		open F, $defaults_file or die 'Can not open defaults file!';
+		while (my $line = <F>) {
+			# Continue reading of the value
+			if ($continue == 1) {
+				if ($line =~ /^(.*)\\$/) {
+					$cfg{$key} .= $1;
+				} else {
+					$cfg{$key} .= $line;
+					chomp $cfg{$key};
+					$continue = 0;
+					#&message('D', '   *  '.$key.'='.$cfg{$key});
+				}
+			}
+			# Read new value
+			if ($continue == 0 and $line =~ /^\s*([A-Z0-9_]+?)\s*=\s*(.*?)(\\|)$/) {
+				$key = $1;
+				my $val = $2;
+
+				$cfg{$key} = $val;
+
+				if ($line =~ /^.*\\$/) {
+					$continue = 1;
+				} else {
+					#&message('D', '   *  '.$key.'='.$val);
+				}
+			}
+		}
+		close F or die 'Can not close defaults file!';
+	} else {
+		#&message('E', 'Defaults do not exist!');
+	}
+
+	return %cfg;
+}

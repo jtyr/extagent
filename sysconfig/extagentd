@@ -1,0 +1,10 @@
+# Configuration file for the extagentd service.
+
+# Path to the config file
+CONFIG="/etc/extagent/extagent.conf"
+
+# Path to the log file
+LOG_FILE="/var/log/extagent/extagentd.log"
+
+# Additional daemon arguments
+ARGS=""

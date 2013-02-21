@@ -1,0 +1,463 @@
+#!/usr/bin/perl
+
+
+#####
+#
+# Description:
+# ============
+#
+# This is SNMP extension agent for JMX eLogging monitoring.
+#
+#####
+#
+# Created by: <jiri(dot)tyr(at)gmail(dot)com>
+#
+#####
+
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Time::Local;
+use LWP::UserAgent;
+use NetSNMP::agent (':all');
+use NetSNMP::ASN qw(ASN_INTEGER ASN_OCTET_STR);
+
+
+# Flush output immidiately
+$| = 1;
+
+
+# File with default values
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_javaapp_elogging.conf';
+# Read default values from file
+my %CFG = &readDefaults();
+
+
+# Application instance
+my $instance;
+# Default protocol
+my $protocol = $CFG{'PROTOCOL'} || 'http';
+# Default hostname
+my $host = $CFG{'HOST'} || 'localhost';
+# Default port number
+my $port = $CFG{'PORT'} || 80;
+# Default record type URL
+my $url_record = $CFG{'URL_RECORD'} || 'jmx-console/XmlAdaptor?action=invokeOpByName&name=lastminute.monitoring%3Aservice%3DMonitorLogging&methodName=getMonitorInfo&argType=java.lang.String&arg0=';
+# Default request type URL
+my $url_request = $CFG{'URL_REQUEST'} || 'jmx-console/XmlAdaptor?action=invokeOpByName&name=lastminute.monitoring%3Aservice%3DMonitorLogging&methodName=getMonitorInfo&argType=java.lang.String&arg0=openUniqueSummary=';
+# Default user
+my $user = $CFG{'USER'} || 'admin';
+# Default password
+my $password = $CFG{'PASSWORD'} || 'admin';
+# Debug variable
+my $DEBUG = $CFG{'DEBUG'} || 0;
+# To show help
+my $help = 0;
+
+# Read the command line options
+GetOptions (
+	'i|instance=i'	=> \$instance,
+	't|protocol=s'	=> \$protocol,
+	'o|host=s'	=> \$host,
+	'p|port=i'	=> \$port,
+	'u|user=s'	=> \$user,
+	's|password=s'	=> \$password,
+	'c|recurl=s'	=> \$url_record,
+	'q|requrl=s'	=> \$url_request,
+	'e|debug'	=> \$DEBUG,
+	'h|help'	=> \$help
+);
+
+# Verify input params
+if ($help == 1) {
+	&help();
+	exit 0;
+}
+unless (defined $instance) {
+	print 'ERROR: Missing parameter!'."\n";
+	&help();
+	exit 1;
+}
+
+
+# Data structure where the data are saved
+my @struct;
+# Timestamp of the last log parsing
+my $prev_timestamp = 0;
+# Maximum time between the collections in seconds (4 minutes)
+my $max_time = $CFG{'MAX_TIME'} || 240;
+# Random sleep at the start of the script
+my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
+# User Agent timeout
+my $timeout = $CFG{'TIMEOUT'} || 2;
+# Record-Request delimiter
+my $delimiter = $CFG{'DELIMITER'} || '::';
+# Name of the agent
+my $NAME = $CFG{'NAME'} || 'javaapp_elogging';
+# OID of the agent
+my $OID = ($CFG{'OID'} ||
+          '1.3.6.1.4.1.8072.9999.9999.5.2').'.'.$instance;
+#                      |    |    |    | |       |
+#                      |    |    |    | |       +--- app instance
+#                      |    |    |    | +----------- elogging
+#                      |    |    |    +------------- javaapp
+#                      |    |    +------------------ netSnmpPlaypen
+#                      |    +----------------------- netSnmpExperimental
+#                      +---------------------------- NET-SNMP-MIB
+
+
+&message('I', '### Starting agent PID '.$$) if ($DEBUG > 0);
+&message('I', 'OID: '.$OID) if ($DEBUG > 0);
+
+
+# Create an agent
+my $agent = new NetSNMP::agent(
+	# makes the agent read a my_agent_name.conf file
+	'Name'		=> $NAME,
+	'AgentX'	=> 1
+);
+
+
+# Sleep to spread load at the start time
+&message('I', 'Sleeping '.$sleep.'s') if ($DEBUG > 0);
+sleep($sleep);
+
+
+# Register the agent
+$agent->register($NAME, $OID, \&myHandler) or die 'Can not register client!';
+
+
+# Wait for requests in infinite loop
+while (1) {
+	# Check when was the last parsing
+	my $curr_timestamp = time;
+	if ($curr_timestamp - $prev_timestamp > $max_time) {
+		# Reset values
+		@struct = ();
+
+		# Get new values
+		&getData();
+		$prev_timestamp = $curr_timestamp;
+
+		if ($DEBUG > 0) {
+			&message('I', 'Found metrics:');
+			foreach my $s (@struct) {
+				&message(undef, '   * '.$s->{'name'});
+			}
+		}
+	}
+
+	$agent->agent_check_and_process(1);
+}
+
+
+# Shutdown the agent (will never happen)
+$agent->shutdown();
+
+
+exit 0;
+
+
+##########
+
+
+# Get the data
+sub getData() {
+	&message('I', 'Reading values...') if ($DEBUG > 0);
+
+	# Define User Agent
+	my $ua = new LWP::UserAgent();
+
+	# Set UA timeout
+	$ua->timeout($timeout);
+
+	# Define record type URL to download
+	my $full_url_record = $protocol.'://'.$host.':'.$port.'/'.$url_record;
+	&message(undef, '   * Record URL: '.$full_url_record) if ($DEBUG > 0);
+
+	# Define HTTP header
+	my $header_record = new HTTP::Headers();
+	$header_record->authorization_basic($user, $password);
+
+	# Define HTTP request
+	my $req_record = new HTTP::Request('GET', $full_url_record, $header_record);
+
+	# Download the web page containing the record type
+	my $content_record = $ua->request($req_record)->content() || die 'Can not download the record type page!';
+
+	# Try to find and to process the MONITOR_SUMMARY string
+	if ($content_record =~ /<!--MONITOR_SUMMARY:\$(.*)\$MONITOR_SUMMARY:-->/s) {
+		my @groups_record = split /\$/, $1;
+
+		foreach my $g (@groups_record) {
+			my @fields_record = split /\|/, $g;
+
+			my $rec_record = {
+				'name'					=> $fields_record[0],
+				'type'					=> 'record',
+				'keep_time'				=> $fields_record[1],
+				'open_request'				=> $fields_record[2],
+				'open_request_avg_time'			=> $fields_record[3],
+				'queued_request'			=> $fields_record[4],
+				'queued_request_avg_time'		=> $fields_record[5],
+				'queued_request_error'			=> $fields_record[6],
+				'daily_error_count'			=> $fields_record[7],
+				'daily_hit_count'			=> $fields_record[8],
+				'queued_request_90th_percentile'	=> $fields_record[9]
+			};
+
+			push @struct, $rec_record;
+		}
+	}
+
+	# Get request type for each of the record type
+	my $length_record = scalar @struct;
+	foreach (my $n=0; $n<$length_record; $n++) {
+		# Define record type URL to download
+		my $full_url_request = $protocol.'://'.$host.':'.$port.'/'.$url_request.$struct[$n]->{'name'};
+		&message(undef, '   * Request URL: '.$full_url_request) if ($DEBUG > 0 and $n == 0);
+
+		# Define HTTP header
+		my $header_request = new HTTP::Headers();
+		$header_request->authorization_basic($user, $password);
+
+		# Define HTTP request
+		my $req_request = new HTTP::Request('GET', $full_url_request, $header_request);
+
+		# Download the web page containing the request type
+		my $content_request = $ua->request($req_request)->content() || die 'Can not download the request type page!';
+
+		# Try to find and to process the MONITOR_OPEN_UNIQUE_SUMMARY string
+		if ($content_request =~ /<!--MONITOR_OPEN_UNIQUE_SUMMARY:(.*)MONITOR_OPEN_UNIQUE_SUMMARY:-->/s) {
+			my @groups_request = split /\n/, $1;
+
+			for (my $i=2; $i<scalar(@groups_request); $i++) {
+				my @fields_request = split /\s+/, $groups_request[$i];
+
+				if (scalar @fields_request == 5) {
+					my $rec_request = {
+						'name'					=> $struct[$n]->{'name'}.$delimiter.$fields_request[4],
+						'type'					=> 'request',
+						'queued_request'			=> $fields_request[0],
+						'queued_request_avg_time'		=> $fields_request[1],
+						'queued_request_90th_percentile'	=> $fields_request[2],
+						'queued_request_error'			=> $fields_request[3]
+					};
+
+					push @struct, $rec_request;
+				}
+			}
+		}
+	}
+}
+
+
+# Function to handle the SNMP requests
+sub myHandler() {
+	# Input parameters
+	my $handler = shift;
+	my $registration_info = shift;
+	my $request_info = shift;
+	my $requests = shift;
+
+	my $request;
+
+	for ($request = $requests; $request; $request = $request->next()) {
+		my $oid = $request->getOID();
+		if ($request_info->getMode() == MODE_GET) {
+			&setRequest('GET', $oid, $request);
+		} elsif ($request_info->getMode() == MODE_GETNEXT) {
+			&setRequest('GETNEXT', $oid, $request);
+		}
+	}
+}
+
+
+# Set the value of the OID request
+sub setRequest() {
+	my $type = shift;
+	my $oid = shift;
+	my $request = shift;
+
+	my $struct_len = scalar @struct;
+	if ($type eq 'GET') {
+		$struct_len++;
+	}
+
+	# All possbile values
+	for (my $n=1; $n<=11; $n++) {
+		if (&compareOID('GETNEXT', $oid, $OID.'.'.$n.'.'.$struct_len)) {
+			my $last = 0;
+
+			for (my $i=0; $i<$struct_len; $i++) {
+				if (&compareOID($type, $oid, $OID.'.'.$n.'.'.($i+1))) {
+					$request->setOID($OID.'.'.$n.'.'.($i+1)) if ($type eq 'GETNEXT');
+
+					if ($n == 1) {
+						# Name
+						$request->setValue(ASN_OCTET_STR, $struct[$i]->{'name'});
+					} elsif ($n == 2) {
+						# KeepTime
+						$request->setValue(ASN_OCTET_STR, $struct[$i]->{'type'});
+					} elsif ($n == 3) {
+						# KeepTime - only record type
+						$request->setValue(ASN_INTEGER, int($struct[$i]->{'keep_time'} || 0));
+					} elsif ($n == 4) {
+						# OpenRequest - only record type
+						$request->setValue(ASN_INTEGER, int($struct[$i]->{'open_request'} || 0));
+					} elsif ($n == 5) {
+						# OpenRequestAverageTime - only record type
+						$request->setValue(ASN_INTEGER, int(($struct[$i]->{'open_request_avg_time'} || 0)*1000));
+					} elsif ($n == 6) {
+						# QueuedRequest
+						$request->setValue(ASN_INTEGER, int $struct[$i]->{'queued_request'});
+					} elsif ($n == 7) {
+						# QueuedRequestAverageTime
+						$request->setValue(ASN_INTEGER, int($struct[$i]->{'queued_request_avg_time'}*1000));
+					} elsif ($n == 8) {
+						# QueuedRequestError
+						$request->setValue(ASN_INTEGER, int $struct[$i]->{'queued_request_error'});
+					} elsif ($n == 9) {
+						# DailyErrorCount - only record type
+						$request->setValue(ASN_INTEGER, int($struct[$i]->{'daily_error_count'} || 0));
+					} elsif ($n == 10) {
+						# DailyHitCount - only record type
+						$request->setValue(ASN_INTEGER, int($struct[$i]->{'daily_hit_count'} || 0));
+					} elsif ($n == 11) {
+						# QueuedRequest90thPercentile
+						$request->setValue(ASN_INTEGER, int($struct[$i]->{'queued_request_90th_percentile'}*1000));
+					}
+
+					# To finish the outer loop
+					$last = 1;
+
+					last;
+				}
+			}
+
+			# Finish the outer loop
+			if ($last == 1) {
+				last;
+			}
+		}
+	}
+}
+
+
+# Make integer checksum (CRC16 would be beter)
+sub crcdec() {
+	my $txt = shift;
+
+	my $sum = unpack('%32W*', $txt) % 65535;
+
+	return $sum;
+}
+
+
+# Show help message
+sub help() {
+	printf "Usage: %s [options] --dir <dir> --instance <instance>\n\n", $0;
+	print 'Options:'."\n";
+	print '  -i, --instance=NUM  application instance'."\n";
+	print '  -t, --protocol=STR  protocol (default: http)'."\n";
+	print '  -o, --host=STR      hostname (default: localhost)'."\n";
+	print '  -p, --port=NUM      port number (default: 80)'."\n";
+	print '  -u, --user=STR      user name (defaul: admin)'."\n";
+	print '  -s, --password=STR  password (defaul: admin)'."\n";
+	print '  -c, --recurl=STR    record type URL'."\n";
+	print '  -q, --requrl=STR    request type URL'."\n";
+	print '  -e, --debug         debug mode'."\n";
+	print '  -h, --help          display this help and exit'."\n\n";
+	print 'Examples:'."\n";
+	printf " \$ %s -p 19500 -i 1\n", $0;
+	printf " \$ %s -o server -u username -s secret -p 19500 -i 1\n", $0;
+}
+
+
+#######################
+##### COMMONS ## #####
+################  ###
+                   #
+
+# Compare requested OID with one of the possible OIDs
+sub compareOID() {
+	my $type = shift;
+	my $oid = shift;
+	my $oid_comp = shift;
+
+	my $ret = 0;
+
+	if ($type eq 'GETNEXT') {
+		if ($oid < new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	} else {
+		if ($oid == new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	}
+
+	return $ret;
+}
+
+
+# Show message
+sub message() {
+	my $type = shift;
+	my $text = shift;
+
+	my $date = `date '+%F %T'`;
+	chomp $date;
+
+	# Append colon to the type
+	$type = (defined $type) ? $type.': ' : '';
+
+	printf "[%s] [PID=%d] %s%s\n", $date, $$, $type, $text;
+}
+
+
+# Read default values from config file
+sub readDefaults() {
+	my %cfg;
+
+	if (-e $defaults_file) {
+		# To continue reading of the value on the next line
+		my $continue = 0;
+		my $key;
+
+		#&message('D', 'Reading defaults');
+		open F, $defaults_file or die 'Can not open defaults file!';
+		while (my $line = <F>) {
+			# Continue reading of the value
+			if ($continue == 1) {
+				if ($line =~ /^(.*)\\$/) {
+					$cfg{$key} .= $1;
+				} else {
+					$cfg{$key} .= $line;
+					chomp $cfg{$key};
+					$continue = 0;
+					#&message('D', '   *  '.$key.'='.$cfg{$key});
+				}
+			}
+			# Read new value
+			if ($continue == 0 and $line =~ /^\s*([A-Z0-9_]+?)\s*=\s*(.*?)(\\|)$/) {
+				$key = $1;
+				my $val = $2;
+
+				$cfg{$key} = $val;
+
+				if ($line =~ /^.*\\$/) {
+					$continue = 1;
+				} else {
+					#&message('D', '   *  '.$key.'='.$val);
+				}
+			}
+		}
+		close F or die 'Can not close defaults file!';
+	} else {
+		#&message('E', 'Defaults do not exist!');
+	}
+
+	return %cfg;
+}

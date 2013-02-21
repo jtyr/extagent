@@ -1,0 +1,289 @@
+#!/usr/bin/perl
+
+#####
+#
+# Description:
+# ============
+#
+# This is a daemon which executes individual agents.
+#
+#####
+#
+# Created by: <jiri(dot)tyr(at)gmail(dot)com>
+#
+#####
+
+
+use strict;
+use warnings;
+use Getopt::Long;
+
+
+# Flush output immidiately
+$| = 1;
+
+
+# Catch TERM signals
+$SIG{'TERM'} = \&dieing;
+
+
+# File with default values
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagentd.conf';
+# Read default values from file
+my %CFG = &readDefaults();
+
+
+# Log directory
+my $conf;
+# Run in the background
+my $background = $CFG{'BACKGROUND'} || 0;
+# Debug variable
+my $DEBUG = $CFG{'DEBUG'} || 0;
+# To show help
+my $help = 0;
+
+# Read the command line options
+GetOptions (
+	'c|config=s'	=> \$conf,
+	'f|background'	=> \$background,
+	'e|debug'	=> \$DEBUG,
+	'h|help'	=> \$help
+);
+
+# Check input params
+if ($help == 1) {
+	&help();
+	exit 0;
+}
+unless (defined $conf) {
+	print 'ERROR: Missing config file!'."\n";
+	&help();
+	exit 1;
+}
+unless (-e $conf) {
+	print 'ERROR: Config file does not exist!'."\n";
+	exit 1;
+}
+
+
+# Make a deamon
+if ($background == 1) {
+	if (my $pid = fork()) {
+		&message('I', 'Exiting the parent process PID='.$$) if ($DEBUG > 0);
+		exit 0;
+	} elsif (not defined $pid) {
+		&message('E', 'Could not fork!') if ($DEBUG > 0);
+		exit 1;
+	}
+}
+
+
+# Array of all running agents
+my @agents;
+# Path where are the agents
+my $bin_path = $CFG{'BIN_PATH'} || '/usr/bin';
+# Default log dir path
+my $log_dir = $CFG{'LOG_DIR'} || '/var/log/extagent';
+# Sleep time
+my $sleep = $CFG{'SLEEP'} || 60;
+
+
+&message('I', '### Starting daemon PID '.$$) if ($DEBUG > 0);
+
+
+# Walk through the config file and run all agents
+open F, $conf or die 'Can not open config file!';
+while (my $line = <F>) {
+	if ($line =~ /^\s*([a-zA-Z0-9].+?)=(\"|')(.*)(\"|')$/) {
+		my $record = {
+			'agent'		=> $1,
+			'params'	=> $3
+		};
+
+		if ($DEBUG > 0) {
+			&message('I', 'Running agent:');
+			&message(undef, '   * agent = '.$record->{'agent'});
+			&message(undef, '   * params = '.$record->{'params'});
+		}
+
+		# Run the agent and get back its PID
+		my $pid = &runAgent($record);
+
+		if ($pid > 0) {
+			&message('I', 'Adding new agent') if ($DEBUG > 0);
+
+			# Set agent PID
+			$record->{'pid'} = $pid;
+
+			# Put the agent into the list of agents
+			push @agents, $record;
+		} else {
+			&message('E', 'Agent is not running') if ($DEBUG > 0);
+		}
+	}
+}
+close F or die 'Can not close config file!';
+
+
+# Infinite loop
+while (1) {
+	&message('I', 'Sleeping for '.$sleep.'s...') if ($DEBUG > 0);
+	sleep $sleep;
+
+	# Check all existing agents
+	foreach $a (@agents) {
+		&checkAgent($a);
+	}
+}
+
+
+exit 0;
+
+
+##########
+
+
+# Execute an agent
+sub runAgent() {
+	my $record = shift;
+
+	&message(undef, '   * executing command') if ($DEBUG > 0);
+
+	# Debug agents only if debuging the daemon
+	my $output = '/dev/null';
+	if ($DEBUG > 0) {
+		$output = $log_dir.'/'.$record->{'agent'}.'.log';
+	}
+
+	# Run the agent
+	my $cmd = $bin_path.'/extagent_'.$record->{'agent'}.' '.$record->{'params'}.($DEBUG > 0 ? ' -e ' : '').' 1>>'.$output.' 2>&1 & echo $!';
+	my $pid = int(`$cmd`);
+
+	&message(undef, '   * agent PID '.$pid) if ($DEBUG > 0);
+
+	return $pid;
+}
+
+
+# Check if agent is running
+sub checkAgent() {
+	&message('I', 'Checking agents') if ($DEBUG > 0);
+
+	# Walk through all defined agents and check its status
+	foreach $a (@agents) {
+		&message(undef, '   * checking PID '.$a->{'pid'}) if ($DEBUG > 0);
+
+		# Signal 0 only verify whether the process is killable = still running
+		my $killed = kill 0, $a->{'pid'};
+		if ($killed == 0) {
+			&message(undef, '   * PID '.$a->{'pid'}.' is not running!') if ($DEBUG > 0);
+
+			# Try to start it again
+			my $pid = &runAgent($a);
+			if ($pid > 0) {
+				# Update the record with new PID
+				$a->{'pid'} = $pid;
+			} else {
+				&message(undef, '   * can not run new process!') if ($DEBUG > 0);
+			}
+		}
+	}
+}
+
+
+# Show help message
+sub help() {
+	printf "Usage: %s [options] --config <config_file>\n\n", $0;
+	print 'Options:'."\n";
+	print '  -c, --config=STR    config file'."\n";
+	print '  -b, --background    run in the background'."\n";
+	print '  -e, --debug         debug mode'."\n";
+	print '  -h, --help          display this help and exit'."\n\n";
+	print 'Examples:'."\n";
+	printf " \$ %s -c /etc/extagent/extagent.conf\n", $0;
+}
+
+
+# Catch the TERM signal
+sub dieing() {
+	&message('I', 'Stopping service...') if ($DEBUG > 0);
+
+	# Go through all running agents and stop them
+	foreach $a (@agents) {
+		&message(undef, '   * Killing PID '.$a->{'pid'}) if ($DEBUG > 0);
+
+		# Try to kill the agent
+		my $killed = kill 'TERM', $a->{'pid'};
+		if ($DEBUG > 0 and $killed == 0) {
+			&message(undef, '   * PID '.$a->{'pid'}.' not killed!');
+		}
+	}
+
+	exit 0;
+}
+
+
+#######################
+##### COMMONS ## #####
+################  ###
+                   #
+
+# Show message
+sub message() {
+	my $type = shift;
+	my $text = shift;
+
+	my $date = `date '+%F %T'`;
+	chomp $date;
+
+	# Add colon to the type
+	$type = (defined $type) ? $type.': ' : '';
+
+	printf "[%s] [PID=%d] %s%s\n", $date, $$, $type, $text;
+}
+
+
+# Read default values from config file
+sub readDefaults() {
+	my %cfg;
+
+	if (-e $defaults_file) {
+		# To continue reading of the value on the next line
+		my $continue = 0;
+		my $key;
+
+		#&message('D', 'Reading defaults');
+		open F, $defaults_file or die 'Can not open defaults file!';
+		while (my $line = <F>) {
+			# Continue reading of the value
+			if ($continue == 1) {
+				if ($line =~ /^(.*)\\$/) {
+					$cfg{$key} .= $1;
+				} else {
+					$cfg{$key} .= $line;
+					chomp $cfg{$key};
+					$continue = 0;
+					#&message('D', '   *  '.$key.'='.$cfg{$key});
+				}
+			}
+			# Read new value
+			if ($continue == 0 and $line =~ /^\s*([A-Z0-9_]+?)\s*=\s*(.*?)(\\|)$/) {
+				$key = $1;
+				my $val = $2;
+
+				$cfg{$key} = $val;
+
+				if ($line =~ /^.*\\$/) {
+					$continue = 1;
+				} else {
+					#&message('D', '   *  '.$key.'='.$val);
+				}
+			}
+		}
+		close F or die 'Can not close defaults file!';
+	} else {
+		#&message('E', 'Defaults do not exist!');
+	}
+
+	return %cfg;
+}
