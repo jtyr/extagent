@@ -1,3 +1,4 @@
+# SNMP Extension Agent log file
 /var/log/extagent/*.log {
     size=5M
     weekly
