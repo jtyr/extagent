@@ -195,7 +195,7 @@ sub setRequest() {
 		$struct_len++;
 	}
 
-	# All possbile values
+	# All possible values
 	for (my $n=1; $n<=2; $n++) {
 		if (&compareOID('GETNEXT', $oid, $OID.'.'.$n.'.'.$struct_len)) {
 			my $last = 0;

@@ -214,6 +214,7 @@ sub setRequest() {
 
 	# Linux OS
 	if ($^O eq 'linux') {
+		# All possible values
 		for (my $n=1; $n<=9; $n++) {
 			if (&compareOID($type, $oid, $OID.'.'.$n)) {
 				$request->setOID($OID.'.'.$n) if ($type eq 'GETNEXT');
