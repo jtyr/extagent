@@ -291,23 +291,26 @@ sub setRequest() {
 	my $request = shift;
 
 	# All possbile values
-	for (my $n=1; $n<=5; $n++) {
+	for (my $n=1; $n<=6; $n++) {
 		if (&compareOID($type, $oid, $OID.'.'.$n)) {
 			$request->setOID($OID.'.'.$n) if ($type eq 'GETNEXT');
 
 			if ($n == 1) {
+				# Port number
+				$request->setValue(ASN_INTEGER, int $port);
+			} elsif ($n == 2) {
 				# Accepts connections
 				$request->setValue(ASN_INTEGER, int $struct{'accepts_connections'});
-			} elsif ($n == 2) {
+			} elsif ($n == 3) {
 				# Used connections
 				$request->setValue(ASN_INTEGER, int $struct{'used_connections'});
-			} elsif ($n == 3) {
+			} elsif ($n == 4) {
 				# Replication IO thread
 				$request->setValue(ASN_INTEGER, int $struct{'repl_io'});
-			} elsif ($n == 4) {
+			} elsif ($n == 5) {
 				# Replication SQL thread
 				$request->setValue(ASN_INTEGER, int $struct{'repl_sql'});
-			} elsif ($n == 5) {
+			} elsif ($n == 6) {
 				# Seconds behind master
 				$request->setValue(ASN_INTEGER, int $struct{'repl_sbm'});
 			}
