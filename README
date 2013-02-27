@@ -34,9 +34,9 @@ $ make install
 
 Other useful commands:
 $ make manifest - generate new MANIFEST
+$ make dist     - pack all files in MANIFEST
 $ make svn      - generate spec file with SVN revision number
 $ make perforce - generate spec file with Perforce revision number
-$ make dist     - pack all files in MANIFEST
 $ make clean    - clean dir
 $ make clear    - clear dir
 
