@@ -19,7 +19,7 @@ use strict;
 use warnings;
 use Getopt::Long;
 use NetSNMP::agent (':all');
-use NetSNMP::ASN qw(ASN_INTEGER);
+use NetSNMP::ASN qw(ASN_INTEGER ASN_OCTET_STR);
 use threads;
 use threads::shared;
 
@@ -43,7 +43,7 @@ my $instance;
 # Date format
 my $date_format = $CFG{'DATA_FORMAT'} || '%d/%b/%Y:%H:%M';
 # Replace index
-my $value_regexp = $CFG{'VALUE_REGEXP'} || '.* ([2345])[0-9]{2} .* (.*) ".?*"$';
+my $value_regexp = $CFG{'VALUE_REGEXP'} || '.*\] ".[^"]*" ([2345])[0-9]{2} ([0-9]+|-) .*$';
 # Status code index
 my $code_index = $CFG{'CODE_INDEX'} || 1;
 # Response time index
@@ -80,10 +80,12 @@ unless (defined $dir and defined $file_pattern and defined $instance) {
 
 # Status code counters
 my %cnt :shared;
+# Final file name
+my $file :shared;
 # Sum of all response times
-my $response = 0;
+my $response :shared;
 # Number of hits
-my $hits = 0;
+my $hits :shared;
 # Timestamp of the last log parsing
 my $prev_timestamp = 0;
 # Maximum time between the collections in seconds (4 minutes)
@@ -176,7 +178,7 @@ sub getData() {
 	my @files = readdir(DIR);
 	closedir DIR or die 'Can not close directory!';
 
-	my $file = '';
+	$file = '';
 	foreach my $f (sort @files) {
 		if ($f =~ /$file_pattern/) {
 			$file = $f;
@@ -197,6 +199,8 @@ sub getData() {
 
 	# Go through the log file
 	my $cmd = "egrep '$date_expr' $dir/$file | sed -r 's/$value_regexp/\\$code_index \\$resp_index/' |";
+	$response = 0;
+	$hits = 0;
 	&message(undef, '   * Cmd: '.$cmd) if ($DEBUG > 0);
 	open F, $cmd or die 'Can not open the file!';
 	while (my $line = <F>) {
@@ -257,16 +261,16 @@ sub setRequest() {
 	my $request = shift;
 
 	if (&compareOID($type, $oid, $OID.'.1')) {
-		# Total number of hits
+		# File
 		$request->setOID($OID.'.1') if ($type eq 'GETNEXT');
-		my $hits = 0;
-		foreach my $n (2..5) {
-			$hits += int($cnt{$n});
-		}
-		$request->setValue(ASN_INTEGER, int $hits);
+		$request->setValue(ASN_OCTET_STR, $dir.'/'.$file);
 	} elsif (&compareOID($type, $oid, $OID.'.2')) {
-		# Average response time
+		# Total number of hits
 		$request->setOID($OID.'.2') if ($type eq 'GETNEXT');
+		$request->setValue(ASN_INTEGER, int $hits);
+	} elsif (&compareOID($type, $oid, $OID.'.3')) {
+		# Average response time
+		$request->setOID($OID.'.3') if ($type eq 'GETNEXT');
 		$request->setValue(ASN_INTEGER, ($hits > 0 ? int($response/$hits) : 0));
 	} else {
 		# Number of hits per type (2xx, 3xx, 4xx and 5xx)
@@ -290,7 +294,8 @@ sub help() {
 	print '                      (default: last file from sorted list)'."\n";
 	print '  -i, --instance=NUM  application instance'."\n";
 	print '  -v, --value=STR     regexp to get the value'."\n";
-	print '                      (default: .* ([2345]).. .* .* ".?*"$)'."\n";
+	print '                      (default: \'.*\] ".[^"]*" ([2345])[0-9]{2} ([0-9]+|-) .*$\''."\n";
+	print '                      for LogFormat "%h %l %u %t \"%r\" %>s %D %b")'."\n";
 	print '  -c, --codeidx=NUM   status code index (default: 1)'."\n";
 	print '  -r, --respidx=NUM   respons time index (default: 2)'."\n";
 	print '  -f, --format=STR    date format of the log file'."\n";
