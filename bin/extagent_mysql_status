@@ -290,7 +290,7 @@ sub setRequest() {
 	my $oid = shift;
 	my $request = shift;
 
-	# All possbile values
+	# All possible values
 	for (my $n=1; $n<=6; $n++) {
 		if (&compareOID($type, $oid, $OID.'.'.$n)) {
 			$request->setOID($OID.'.'.$n) if ($type eq 'GETNEXT');

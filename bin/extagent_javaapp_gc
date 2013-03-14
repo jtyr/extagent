@@ -725,7 +725,7 @@ sub setRequest() {
 
 		my $last = 0;
 
-		# All possbile values
+		# All possible values
 		for (my $i=1; $i<=13; $i++) {
 			if (&compareOID($type, $oid, $OID.'.'.$n.'.'.$i)) {
 				$request->setOID($OID.'.'.$n.'.'.$i) if ($type eq 'GETNEXT');
