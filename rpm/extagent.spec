@@ -94,7 +94,7 @@ This is SNMP extension agent for CPU summary monitoring.
 
 
 %package -n %{pkgprefix}-javaapp-gc
-Summary:	Java GV agent
+Summary:	Java GC agent
 Group:		Application/Monitoring
 Requires:	%{pkgprefix}-daemon
 Requires:	net-snmp-perl
@@ -105,7 +105,7 @@ This is SNMP extension agent for Java Garbage Collector monitoring.
 
 
 %package -n %{pkgprefix}-mysql-status
-Summary:	Java GV agent
+Summary:	MySQL Status agent
 Group:		Application/Monitoring
 Requires:	%{pkgprefix}-daemon
 Requires:	net-snmp-perl
@@ -114,6 +114,16 @@ Requires:	perl-DBD-MySQL
 
 %description -n %{pkgprefix}-mysql-status
 This is SNMP extension agent for MySQL status monitoring.
+
+
+%package -n %{pkgprefix}-dummy-simple
+Summary:	Dummy simple agent
+Group:		Application/Monitoring
+Requires:	%{pkgprefix}-daemon
+Requires:	net-snmp-perl
+
+%description -n %{pkgprefix}-dummy-simple
+This is SNMP extension agent demonstrating simple SNMP structure.
 
 
 %prep
@@ -186,8 +196,16 @@ This is SNMP extension agent for MySQL status monitoring.
 %config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_mysql_status.conf
 %{_bindir}/%{pkgprefix}_mysql_status
 
+%files -n %{pkgprefix}-dummy-simple
+%defattr(-,root,root,-)
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_dummy_simple.conf
+%{_bindir}/%{pkgprefix}_dummy_simple
+
 
 %changelog
+* Wed Mar 11 2013 Jiri Tyr <jiri.tyr at gmail.com>
+- Added extagent-dummy-simple package.
+
 * Thu Sep 13 2012 Jiri Tyr <jiri.tyr at gmail.com>
 - Added noreplace to the config macro for all extagent config files.
 

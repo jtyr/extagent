@@ -1,0 +1,291 @@
+#!/usr/bin/perl
+
+
+#####
+#
+# Description:
+# ============
+#
+# This is SNMP extension agent used for demonstration purpose only.
+#
+#####
+#
+# Created by: <jiri(dot)tyr(at)gmail(dot)com>
+#
+#####
+
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Time::Local;
+use NetSNMP::agent (':all');
+use NetSNMP::ASN qw(ASN_INTEGER);
+
+
+# Flush output immidiately
+$| = 1;
+
+
+# File with default values
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_dummy_simple.conf';
+# Read default values from file
+my %CFG = &readDefaults();
+
+
+# Application instance
+my $instance;
+# Number of variables
+my $number = $CFG{'NUMBER'} || 5;
+# Debug variable
+my $DEBUG = $CFG{'DEBUG'} || 0;
+# To show help
+my $help = 0;
+
+# Read the command line options
+GetOptions (
+	'i|instance=i'	=> \$instance,
+	'n|number=i'	=> \$number,
+	'e|debug'	=> \$DEBUG,
+	'h|help'	=> \$help
+);
+
+# Verify input params
+if ($help == 1) {
+	&help();
+	exit 0;
+}
+unless (defined $instance) {
+	print 'ERROR: Missing parameter!'."\n";
+	&help();
+	exit 1;
+}
+if ($number < 1) {
+	print 'ERROR: Number of variables must be bigger than zero!'."\n";
+	&help();
+	exit 1;
+}
+
+
+# Data structure where the data are saved
+my @struct;
+# Timestamp of the last log parsing
+my $prev_timestamp = 0;
+# Maximum time between the collections in seconds (4 minutes)
+my $max_time = $CFG{'MAX_TIME'} || 240;
+# Random sleep at the start of the script
+my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
+# Name of the agent
+my $NAME = $CFG{'NAME'} || 'dummy_simple';
+# OID of the agent
+my $OID = ($CFG{'OID'} ||
+          '1.3.6.1.4.1.8072.9999.9999.9999.1').'.'.$instance;
+#                      |    |    |    |    |       |
+#                      |    |    |    |    |       +--- app instance
+#                      |    |    |    |    +----------- simple
+#                      |    |    |    +---------------- dummy
+#                      |    |    +--------------------- netSnmpPlaypen
+#                      |    +-------------------------- netSnmpExperimental
+#                      +------------------------------- NET-SNMP-MIB
+
+
+&message('I', '### Starting agent PID '.$$) if ($DEBUG > 0);
+&message('I', 'OID: '.$OID) if ($DEBUG > 0);
+
+
+# Create an agent
+my $agent = new NetSNMP::agent(
+	# makes the agent read a my_agent_name.conf file
+	'Name'		=> $NAME,
+	'AgentX'	=> 1
+);
+
+
+# Sleep to spread load at the start time
+&message('I', 'Sleeping '.$sleep.'s') if ($DEBUG > 0);
+sleep($sleep);
+
+
+# Register the agent
+$agent->register($NAME, $OID, \&myHandler) or die 'Can not register client!';
+
+
+# Wait for requests in infinite loop
+while (1) {
+	# Check when was the last parsing
+	my $curr_timestamp = time;
+	if ($curr_timestamp - $prev_timestamp > $max_time) {
+		# Reset values
+		@struct = ();
+
+		# Get new values
+		&getData();
+		$prev_timestamp = $curr_timestamp;
+	}
+
+	$agent->agent_check_and_process(1);
+}
+
+
+# Shutdown the agent (will never happen)
+$agent->shutdown();
+
+
+exit 0;
+
+
+##########
+
+
+# Get the data
+sub getData() {
+	&message('I', 'Reading values...') if ($DEBUG > 0);
+
+	# Generate random data
+	for (1..$number) {
+		my $val = int rand(1000);
+		push @struct, $val;
+		&message('I', ' * '.$val) if ($DEBUG > 0);
+	}
+}
+
+
+# Function to handle the SNMP requests
+sub myHandler() {
+	# Input parameters
+	my $handler = shift;
+	my $registration_info = shift;
+	my $request_info = shift;
+	my $requests = shift;
+
+	my $request;
+
+	for ($request = $requests; $request; $request = $request->next()) {
+		my $oid = $request->getOID();
+		if ($request_info->getMode() == MODE_GET) {
+			&setRequest('GET', $oid, $request);
+		} elsif ($request_info->getMode() == MODE_GETNEXT) {
+			&setRequest('GETNEXT', $oid, $request);
+		}
+	}
+}
+
+
+# Set the value of the OID request
+sub setRequest() {
+	my $type = shift;
+	my $oid = shift;
+	my $request = shift;
+
+	# All possible values
+	for (my $n=1; $n<=$number; $n++) {
+		if (&compareOID($type, $oid, $OID.'.'.$n)) {
+			$request->setOID($OID.'.'.$n) if ($type eq 'GETNEXT');
+
+			$request->setValue(ASN_INTEGER, int $struct[$n-1]);
+
+			last;
+		}
+	}
+}
+
+
+# Show help message
+sub help() {
+	printf "Usage: %s [options] --instance <instance>\n\n", $0;
+	print 'Options:'."\n";
+	print '  -i, --instance=NUM  application instance'."\n";
+	print '  -e, --debug         debug mode'."\n";
+	print '  -n, --number=NUM    number of variables'."\n";
+	print '  -h, --help          display this help and exit'."\n\n";
+	print 'Examples:'."\n";
+	printf " \$ %s -e\n", $0;
+}
+
+
+#######################
+##### COMMONS ## #####
+################  ###
+                   #
+
+# Compare requested OID with one of the possible OIDs
+sub compareOID() {
+	my $type = shift;
+	my $oid = shift;
+	my $oid_comp = shift;
+
+	my $ret = 0;
+
+	if ($type eq 'GETNEXT') {
+		if ($oid < new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	} else {
+		if ($oid == new NetSNMP::OID($oid_comp)) {
+			$ret = 1;
+		}
+	}
+
+	return $ret;
+}
+
+
+# Show message
+sub message() {
+	my $type = shift;
+	my $text = shift;
+
+	my $date = `date '+%F %T'`;
+	chomp $date;
+
+	# Append colon to the type
+	$type = (defined $type) ? $type.': ' : '';
+
+	printf "[%s] [PID=%d] %s%s\n", $date, $$, $type, $text;
+}
+
+
+# Read default values from config file
+sub readDefaults() {
+	my %cfg;
+
+	if (-e $defaults_file) {
+		# To continue reading of the value on the next line
+		my $continue = 0;
+		my $key;
+
+		#&message('D', 'Reading defaults');
+		open F, $defaults_file or die 'Can not open defaults file!';
+		while (my $line = <F>) {
+			# Continue reading of the value
+			if ($continue == 1) {
+				if ($line =~ /^(.*)\\$/) {
+					$cfg{$key} .= $1;
+				} else {
+					$cfg{$key} .= $line;
+					chomp $cfg{$key};
+					$continue = 0;
+					#&message('D', '   *  '.$key.'='.$cfg{$key});
+				}
+			}
+			# Read new value
+			if ($continue == 0 and $line =~ /^\s*([A-Z0-9_]+?)\s*=\s*(.*?)(\\|)$/) {
+				$key = $1;
+				my $val = $2;
+
+				$cfg{$key} = $val;
+
+				if ($line =~ /^.*\\$/) {
+					$continue = 1;
+				} else {
+					#&message('D', '   *  '.$key.'='.$val);
+				}
+			}
+		}
+		close F or die 'Can not close defaults file!';
+	} else {
+		#&message('E', 'Defaults do not exist!');
+	}
+
+	return %cfg;
+}
