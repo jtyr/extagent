@@ -48,6 +48,8 @@ my $value_regexp = $CFG{'VALUE_REGEXP'} || '.*\] ".[^"]*" ([2345])[0-9]{2} ([0-9
 my $code_index = $CFG{'CODE_INDEX'} || 1;
 # Response time index
 my $resp_index = $CFG{'RESP_INDEX'} || 2;
+# Log regexp
+my $log_regexp = $CFG{'LOG_REGEXP'} || undef;
 # Debug variable
 my $DEBUG = $CFG{'DEBUG'} || 0;
 # To show help
@@ -62,6 +64,7 @@ GetOptions (
 	'v|value=s'	=> \$value_regexp,
 	'c|codeidx=i'	=> \$code_index,
 	'r|respidx=i'	=> \$resp_index,
+	'l|logregex=s'	=> \$log_regexp,
 	'e|debug'	=> \$DEBUG,
 	'h|help'	=> \$help
 );
@@ -80,8 +83,8 @@ unless (defined $dir and defined $file_pattern and defined $instance) {
 
 # Status code counters
 my %cnt :shared;
-# Final file name
-my $file :shared;
+# Log name
+my $log_name :shared;
 # Sum of all response times
 my $response :shared;
 # Number of hits
@@ -178,11 +181,18 @@ sub getData() {
 	my @files = readdir(DIR);
 	closedir DIR or die 'Can not close directory!';
 
-	$file = '';
+	my $file = $dir;
 	foreach my $f (sort @files) {
 		if ($f =~ /$file_pattern/) {
-			$file = $f;
+			$file .= '/'.$f;
 		}
+	}
+
+	$log_name = $file;
+
+	# Modify the log file name if requested
+	if (defined $log_regexp) {
+		$log_name =~ s/$log_regexp//g;
 	}
 
 	# Build the regulare expression for last N seconds
@@ -198,7 +208,7 @@ sub getData() {
 	$date_expr .= ')';
 
 	# Go through the log file
-	my $cmd = "egrep '$date_expr' $dir/$file | sed -r 's/$value_regexp/\\$code_index \\$resp_index/' |";
+	my $cmd = "egrep '$date_expr' $file | sed -r 's/$value_regexp/\\$code_index \\$resp_index/' |";
 	$response = 0;
 	$hits = 0;
 	&message(undef, '   * Cmd: '.$cmd) if ($DEBUG > 0);
@@ -215,6 +225,7 @@ sub getData() {
 	close F or die 'Can not close the file!';
 
 	if ($DEBUG > 0) {
+		&message(undef, '   * log file:       '.$log_name);
 		&message(undef, '   * total num hits: '.$hits);
 		&message(undef, '   * avg resp time:  '.($hits > 0 ? int($response/$hits) : 0));
 		&message(undef, '   * code 2xx:       '.$cnt{'2'});
@@ -263,7 +274,7 @@ sub setRequest() {
 	if (&compareOID($type, $oid, $OID.'.1')) {
 		# File
 		$request->setOID($OID.'.1') if ($type eq 'GETNEXT');
-		$request->setValue(ASN_OCTET_STR, $dir.'/'.$file);
+		$request->setValue(ASN_OCTET_STR, $log_name);
 	} elsif (&compareOID($type, $oid, $OID.'.2')) {
 		# Total number of hits
 		$request->setOID($OID.'.2') if ($type eq 'GETNEXT');
@@ -300,6 +311,7 @@ sub help() {
 	print '  -r, --respidx=NUM   respons time index (default: 2)'."\n";
 	print '  -f, --format=STR    date format of the log file'."\n";
 	print '                      (default: %d/%b/%Y:%H:%M)'."\n";
+	print '  -l, --logregex=STR  regex applied on the log file name'."\n";
 	print '  -e, --debug         debug mode'."\n";
 	print '  -h, --help          display this help and exit'."\n\n";
 	print 'Examples:'."\n";
