@@ -2,7 +2,7 @@
 
 Name:		%{pkgprefix}-daemon
 Summary:	Daemon for SNMP Extension Agents
-Version:	1.10
+Version:	1.11
 Release:	1%{?dist}
 License:	GPL3
 URL:		http://snmp-extagent.googlecode.com
@@ -126,6 +126,16 @@ Requires:	net-snmp-perl
 This is SNMP extension agent demonstrating simple SNMP structure.
 
 
+%package -n %{pkgprefix}-table-maker
+Summary:	Table maker agent
+Group:		Application/Monitoring
+Requires:	%{pkgprefix}-daemon
+Requires:	net-snmp-perl
+
+%description -n %{pkgprefix}-table-maker
+This is SNMP extension agent aggregates other extagents into a table.
+
+
 %prep
 %setup -q -n %{pkgprefix}-%{version}
 
@@ -201,9 +211,17 @@ This is SNMP extension agent demonstrating simple SNMP structure.
 %config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_dummy_simple.conf
 %{_bindir}/%{pkgprefix}_dummy_simple
 
+%files -n %{pkgprefix}-table-maker
+%defattr(-,root,root,-)
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_table_maker.conf
+%{_bindir}/%{pkgprefix}_table_maker
+
 
 %changelog
-* Wed Mar 11 2013 Jiri Tyr <jiri.tyr at gmail.com>
+* Thu Mar 14 2013 Jiri Tyr <jiri.tyr at gmail.com>
+- Added extagent-table-maker package.
+
+* Mon Mar 11 2013 Jiri Tyr <jiri.tyr at gmail.com>
 - Added extagent-dummy-simple package.
 
 * Thu Sep 13 2012 Jiri Tyr <jiri.tyr at gmail.com>
