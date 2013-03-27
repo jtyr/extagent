@@ -58,7 +58,7 @@ my $virtual = 0;
 # Timestamp of the last log parsing
 my $prev_timestamp = 0;
 # Maximum time between the collections in seconds (4 minutes)
-my $max_time = $CFG{'MAX_TIME'} || 240;
+my $max_time = $ENV{'MAX_TIME'} || $CFG{'MAX_TIME'} || 240;
 # Random sleep at the start of the script
 my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
 # Name of the agent
