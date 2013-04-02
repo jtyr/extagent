@@ -1,14 +1,15 @@
 %define		pkgprefix extagent
+%define		main_version 20130402-r1
 
 Name:		%{pkgprefix}-daemon
 Summary:	Daemon for SNMP Extension Agents
-Version:	1.11
+Version:	1.12
 Release:	1%{?dist}
 License:	GPL3
 URL:		http://snmp-extagent.googlecode.com
 Group:		Application/Monitoring
-Source:		%{pkgprefix}-%{version}.tar.gz
-BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
+Source:		%{pkgprefix}-%{main_version}.tar.gz
+BuildRoot:	%{_tmppath}/%{name}-%{main_version}-%{release}-root
 
 BuildArch:	noarch
 BuildRequires:	make
@@ -21,8 +22,10 @@ This is a daemon which executes individual agents.
 
 %package -n %{pkgprefix}-logparser-statuscode
 Summary:	HTTP Status Code agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 
 %description -n %{pkgprefix}-logparser-statuscode
@@ -31,8 +34,10 @@ This is SNMP extension agent for HTTP status code monitoring.
 
 %package -n %{pkgprefix}-cert-expiry
 Summary:	SSL certificate expiry agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 Requires:	openssl
 
@@ -42,8 +47,10 @@ This is SNMP extension agent for SSL certificate expiry monitoring.
 
 %package -n %{pkgprefix}-sendmail-stats
 Summary:	Sendmail stats agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 Requires:	sendmail
 
@@ -53,8 +60,10 @@ This is SNMP extension agent for Sendmail stats monitoring.
 
 %package -n %{pkgprefix}-file-size
 Summary:	File size agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 
 %description -n %{pkgprefix}-file-size
@@ -63,8 +72,10 @@ This is SNMP extension agent for file size monitoring.
 
 %package -n %{pkgprefix}-javaapp-status
 Summary:	Java application status agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 
 %description -n %{pkgprefix}-javaapp-status
@@ -73,8 +84,10 @@ This is SNMP extension agent for Java application status monitoring.
 
 %package -n %{pkgprefix}-javaapp-elogging
 Summary:	JMX eLogging agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 Requires:	perl-libwww-perl
 
@@ -84,8 +97,10 @@ This is SNMP extension agent for JMX eLogging monitoring.
 
 %package -n %{pkgprefix}-cpu-summary
 Summary:	CPU summary agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 Requires:	/usr/sbin/dmidecode
 
@@ -95,8 +110,10 @@ This is SNMP extension agent for CPU summary monitoring.
 
 %package -n %{pkgprefix}-javaapp-gc
 Summary:	Java GC agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 Requires:	perl-libwww-perl
 
@@ -106,8 +123,10 @@ This is SNMP extension agent for Java Garbage Collector monitoring.
 
 %package -n %{pkgprefix}-mysql-status
 Summary:	MySQL Status agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 Requires:	perl-libwww-perl
 Requires:	perl-DBD-MySQL
@@ -118,8 +137,10 @@ This is SNMP extension agent for MySQL status monitoring.
 
 %package -n %{pkgprefix}-dummy-simple
 Summary:	Dummy simple agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 
 %description -n %{pkgprefix}-dummy-simple
@@ -128,8 +149,10 @@ This is SNMP extension agent demonstrating simple SNMP structure.
 
 %package -n %{pkgprefix}-table-maker
 Summary:	Table maker agent
+Version:	1.12
+Release:	1%{?dist}
 Group:		Application/Monitoring
-Requires:	%{pkgprefix}-daemon
+Requires:	%{pkgprefix}-daemon >= 1.12
 Requires:	net-snmp-perl
 
 %description -n %{pkgprefix}-table-maker
@@ -137,7 +160,7 @@ This is SNMP extension agent aggregates other extagents into a table.
 
 
 %prep
-%setup -q -n %{pkgprefix}-%{version}
+%setup -q -n %{pkgprefix}-%{main_version}
 
 
 %install
@@ -218,6 +241,9 @@ This is SNMP extension agent aggregates other extagents into a table.
 
 
 %changelog
+* Tue Apr 2 2013 Jiri Tyr <jiri.tyr at gmail.com>
+- Added version for each extagent.
+
 * Thu Mar 14 2013 Jiri Tyr <jiri.tyr at gmail.com>
 - Added extagent-table-maker package.
 
