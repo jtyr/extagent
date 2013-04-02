@@ -137,13 +137,6 @@ while (1) {
 	# Check when was the last parsing
 	my $curr_timestamp = time;
 	if ($curr_timestamp - $prev_timestamp > $max_time) {
-		# Reset values to zero
-		$response = 0;
-		$hits = 0;
-		foreach my $n (2..5) {
-			$cnt{$n} = 0;
-		}
-
 		# Create a thread to read the data
 		threads->create(sub {
 			&message('I', 'Starting thread (TID: '.threads->tid().')') if ($DEBUG > 0);
@@ -154,6 +147,16 @@ while (1) {
 			&message('I', 'Finishing thread (TID: '.threads->tid().')') if ($DEBUG > 0);
 			#threads->exit();
 		})->detach();
+
+		if ($DEBUG > 0) {
+			&message(undef, '   * log file:       '.$log_name);
+			&message(undef, '   * total num hits: '.$hits);
+			&message(undef, '   * avg resp time:  '.($hits > 0 ? int($response/$hits) : 0));
+			&message(undef, '   * code 2xx:       '.$cnt{'2'});
+			&message(undef, '   * code 3xx:       '.$cnt{'3'});
+			&message(undef, '   * code 4xx:       '.$cnt{'4'});
+			&message(undef, '   * code 5xx:       '.$cnt{'5'});
+		}
 
 		$prev_timestamp = $curr_timestamp;
 	}
@@ -175,6 +178,14 @@ exit 0;
 # Get the data
 sub getData() {
 	&message('I', 'Parsing the log file...') if ($DEBUG > 0);
+
+	# Initiate values
+	my $tmp_response = 0;
+	my $tmp_hits = 0;
+	my %tmp_cnt;
+	foreach my $n (2..5) {
+		$cnt{$n} = 0;
+	}
 
 	# Get the last log file
 	opendir DIR, $dir or die 'Can not open directory!';
@@ -209,29 +220,24 @@ sub getData() {
 
 	# Go through the log file
 	my $cmd = "egrep '$date_expr' $file | sed -r 's/$value_regexp/\\$code_index \\$resp_index/' |";
-	$response = 0;
-	$hits = 0;
 	&message(undef, '   * Cmd: '.$cmd) if ($DEBUG > 0);
 	open F, $cmd or die 'Can not open the file!';
 	while (my $line = <F>) {
 		chomp $line;
 		my ($code, $resp) = split / /, $line;
 		if ($code > 1 and $code < 6) {
-			$cnt{$code} += 1;
-			$response += $resp =~ /\d+/ ? $resp : 0;
-			$hits++;
+			$tmp_cnt{$code} += 1;
+			$tmp_response += $resp =~ /\d+/ ? $resp : 0;
+			$tmp_hits++;
 		}
 	}
 	close F or die 'Can not close the file!';
 
-	if ($DEBUG > 0) {
-		&message(undef, '   * log file:       '.$log_name);
-		&message(undef, '   * total num hits: '.$hits);
-		&message(undef, '   * avg resp time:  '.($hits > 0 ? int($response/$hits) : 0));
-		&message(undef, '   * code 2xx:       '.$cnt{'2'});
-		&message(undef, '   * code 3xx:       '.$cnt{'3'});
-		&message(undef, '   * code 4xx:       '.$cnt{'4'});
-		&message(undef, '   * code 5xx:       '.$cnt{'5'});
+	# Propagate the current values to the parent thread
+	$response = $tmp_response;
+	$hits = $tmp_hits;
+	foreach my $n (2..5) {
+		$cnt{$n} = $tmp_cnt{$n};
 	}
 }
 
