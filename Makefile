@@ -5,7 +5,7 @@
 NAME = extagent
 DNAME = $(NAME)d
 DESTDIR =
-VERSION = $(shell grep 'Version' rpm/$(NAME).spec | awk '{print $$2}')
+VERSION = $(shell grep -m 1 'main_version' rpm/$(NAME).spec | awk '{print $$3}')
 DISTVNAME = $(NAME)-$(VERSION)
 
 BINDIR = $(DESTDIR)/usr/bin
