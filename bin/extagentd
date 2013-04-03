@@ -156,7 +156,7 @@ sub runAgent() {
 	}
 
 	# Run the agent
-	my $cmd = $bin_path.'/extagent_'.$record->{'agent'}.' '.$record->{'params'}.($DEBUG > 0 ? ' -e ' : '').' 1>>'.$output.' 2>&1 & echo $!';
+	my $cmd = $bin_path.'/extagent-'.$record->{'agent'}.' '.$record->{'params'}.($DEBUG > 0 ? ' -e ' : '').' 1>>'.$output.' 2>&1 & echo $!';
 	my $pid = int(`$cmd`);
 
 	&message(undef, '   * agent PID '.$pid) if ($DEBUG > 0);
