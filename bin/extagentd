@@ -28,7 +28,7 @@ $SIG{'TERM'} = \&dieing;
 
 
 # File with default values
-my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagentd.conf';
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_daemon.conf';
 # Read default values from file
 my %CFG = &readDefaults();
 
