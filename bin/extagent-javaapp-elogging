@@ -29,7 +29,7 @@ $| = 1;
 
 
 # File with default values
-my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_javaapp_elogging.conf';
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent-javaapp-elogging.conf';
 # Read default values from file
 my %CFG = &readDefaults();
 
@@ -94,7 +94,7 @@ my $timeout = $CFG{'TIMEOUT'} || 2;
 # Record-Request delimiter
 my $delimiter = $CFG{'DELIMITER'} || '::';
 # Name of the agent
-my $NAME = $CFG{'NAME'} || 'javaapp_elogging';
+my $NAME = $CFG{'NAME'} || 'javaapp-elogging';
 # OID of the agent
 my $OID = ($CFG{'OID'} ||
           '1.3.6.1.4.1.8072.9999.9999.5.2').'.'.$instance;

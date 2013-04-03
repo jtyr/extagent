@@ -28,7 +28,7 @@ $| = 1;
 
 
 # File with default values
-my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_cert_expiry.conf';
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent-cert-expiry.conf';
 # Read default values from file
 my %CFG = &readDefaults();
 
@@ -110,7 +110,7 @@ my %months = (
 	'Dec' => 11
 );
 # Name of the agent
-my $NAME = $CFG{'NAME'} || 'cert_expiry';
+my $NAME = $CFG{'NAME'} || 'cert-expiry';
 # Network OID of the agent
 my $NET_OID = ($CFG{'NET_OID'} ||
               '1.3.6.1.4.1.8072.9999.9999.2.1.').'.'.$instance;

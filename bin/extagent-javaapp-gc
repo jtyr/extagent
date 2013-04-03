@@ -31,7 +31,7 @@ $| = 1;
 
 
 # File with default values
-my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_javaapp_gc.conf';
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent-javaapp-gc.conf';
 # Read default values from file
 my %CFG = &readDefaults();
 
@@ -89,7 +89,7 @@ my $period = $CFG{'PERIOD'} || 300;
 # Random sleep at the start of the script
 my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
 # Name of the agent
-my $NAME = $CFG{'NAME'} || 'javaapp_gc';
+my $NAME = $CFG{'NAME'} || 'javaapp-gc';
 # Command to grep only the right GC lines
 my $gc_grep = 'grep -P \'(GC.*->|^\s+(?:perm\s+gen|PSPermGen\s+gen|PSPermGen)\s+total\s+\d+K,\s+used\s+\d+K)\'';
 # Command to grep PID from the PS list

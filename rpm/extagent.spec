@@ -177,7 +177,7 @@ This is SNMP extension agent aggregates other extagents into a table.
 %defattr(-,root,root,-)
 %doc Changes README
 %config(noreplace) %{_sysconfdir}/%{pkgprefix}/%{pkgprefix}.conf
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}d.conf
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-daemon.conf
 %config %{_sysconfdir}/sysconfig/%{pkgprefix}d
 %config %{_sysconfdir}/logrotate.d/%{pkgprefix}
 %config %{_sysconfdir}/init.d/%{pkgprefix}d
@@ -186,61 +186,64 @@ This is SNMP extension agent aggregates other extagents into a table.
 
 %files -n %{pkgprefix}-logparser-statuscode
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_logparser_statuscode.conf
-%{_bindir}/%{pkgprefix}_logparser_statuscode
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-logparser-statuscode.conf
+%{_bindir}/%{pkgprefix}-logparser-statuscode
 
 %files -n %{pkgprefix}-cert-expiry
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_cert_expiry.conf
-%{_bindir}/%{pkgprefix}_cert_expiry
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-cert-expiry.conf
+%{_bindir}/%{pkgprefix}-cert-expiry
 
 %files -n %{pkgprefix}-sendmail-stats
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_sendmail_stats.conf
-%{_bindir}/%{pkgprefix}_sendmail_stats
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-sendmail-stats.conf
+%{_bindir}/%{pkgprefix}-sendmail-stats
 
 %files -n %{pkgprefix}-file-size
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_file_size.conf
-%{_bindir}/%{pkgprefix}_file_size
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-file-size.conf
+%{_bindir}/%{pkgprefix}-file-size
 
 %files -n %{pkgprefix}-javaapp-status
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_javaapp_status.conf
-%{_bindir}/%{pkgprefix}_javaapp_status
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-javaapp-status.conf
+%{_bindir}/%{pkgprefix}-javaapp-status
 
 %files -n %{pkgprefix}-javaapp-elogging
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_javaapp_elogging.conf
-%{_bindir}/%{pkgprefix}_javaapp_elogging
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-javaapp-elogging.conf
+%{_bindir}/%{pkgprefix}-javaapp-elogging
 
 %files -n %{pkgprefix}-cpu-summary
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_cpu_summary.conf
-%{_bindir}/%{pkgprefix}_cpu_summary
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-cpu-summary.conf
+%{_bindir}/%{pkgprefix}-cpu-summary
 
 %files -n %{pkgprefix}-javaapp-gc
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_javaapp_gc.conf
-%{_bindir}/%{pkgprefix}_javaapp_gc
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-javaapp-gc.conf
+%{_bindir}/%{pkgprefix}-javaapp-gc
 
 %files -n %{pkgprefix}-mysql-status
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_mysql_status.conf
-%{_bindir}/%{pkgprefix}_mysql_status
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-mysql-status.conf
+%{_bindir}/%{pkgprefix}-mysql-status
 
 %files -n %{pkgprefix}-dummy-simple
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_dummy_simple.conf
-%{_bindir}/%{pkgprefix}_dummy_simple
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-dummy-simple.conf
+%{_bindir}/%{pkgprefix}-dummy-simple
 
 %files -n %{pkgprefix}-table-maker
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}_table_maker.conf
-%{_bindir}/%{pkgprefix}_table_maker
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-table-maker.conf
+%{_bindir}/%{pkgprefix}-table-maker
 
 
 %changelog
+* Wed Apr 3 2013 Jiri Tyr <jiri.tyr at gmail.com>
+- Replacing underscroles by hyphens.
+
 * Tue Apr 2 2013 Jiri Tyr <jiri.tyr at gmail.com>
 - Added version for each extagent.
 

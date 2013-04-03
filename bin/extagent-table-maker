@@ -28,7 +28,7 @@ $| = 1;
 
 
 # File with default values
-my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_table_maker.conf';
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent-table-maker.conf';
 # Read default values from file
 my %CFG = &readDefaults();
 
@@ -99,7 +99,7 @@ my $max_time = $ENV{'MAX_TIME'} || $CFG{'MAX_TIME'} || 240;
 # Random sleep at the start of the script
 my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
 # Name of the agent
-my $NAME = $CFG{'NAME'} || 'table_maker';
+my $NAME = $CFG{'NAME'} || 'table-maker';
 # OID of the agent
 my $OID = $oid.'.'.$number;
 

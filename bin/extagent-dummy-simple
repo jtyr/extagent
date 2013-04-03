@@ -28,7 +28,7 @@ $| = 1;
 
 
 # File with default values
-my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent_dummy_simple.conf';
+my $defaults_file = $ENV{'DEFAULT_FILE'} || '/etc/extagent/default/extagent-dummy-simple.conf';
 # Read default values from file
 my %CFG = &readDefaults();
 
@@ -76,7 +76,7 @@ my $max_time = $ENV{'MAX_TIME'} || $CFG{'MAX_TIME'} || 240;
 # Random sleep at the start of the script
 my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
 # Name of the agent
-my $NAME = $CFG{'NAME'} || 'dummy_simple';
+my $NAME = $CFG{'NAME'} || 'dummy-simple';
 # OID of the agent
 my $OID = ($CFG{'OID'} ||
           '1.3.6.1.4.1.8072.9999.9999.9999.8.1').'.'.$instance;
