@@ -96,7 +96,7 @@ my $max_time = $ENV{'MAX_TIME'} || $CFG{'MAX_TIME'} || 240;
 # Parse only last N seconds (300 = 5 mins)
 my $period = $ENV{'MAX_TIME'} || $CFG{'PERIOD'} || 300;
 # Random sleep at the start of the script
-my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
+my $sleep = int rand($ENV{'EXTAGENT_SLEEP'} || $CFG{'SLEEP'} || 0);
 # Name of the agent
 my $NAME = $CFG{'NAME'} || 'logparser-statuscode';
 # OID of the agent

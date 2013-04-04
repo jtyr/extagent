@@ -93,7 +93,7 @@ my $prev_timestamp = 0;
 # Maximum time between the collections in seconds (4 minutes)
 my $max_time = $ENV{'MAX_TIME'} || $CFG{'MAX_TIME'} || 240;
 # Random sleep at the start of the script
-my $sleep = int rand($ENV{'EXTAGENT_SLEEP'} || $CFG{'SLEEP'} || 60);
+my $sleep = int rand($ENV{'EXTAGENT_SLEEP'} || $CFG{'SLEEP'} || 0);
 # List of months
 my %months = (
 	'Jan' =>  0,

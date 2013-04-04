@@ -74,7 +74,7 @@ my $max_time = $ENV{'MAX_TIME'} || $CFG{'MAX_TIME'} || 240;
 # Parse only last N minutes
 my $mins = $CFG{'MINS'} || 5;
 # Random sleep at the start of the script
-my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
+my $sleep = int rand($ENV{'EXTAGENT_SLEEP'} || $CFG{'SLEEP'} || 0);
 # Name of the agent
 my $NAME = $CFG{'NAME'} || 'file-size';
 # OID of the agent
