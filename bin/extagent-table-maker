@@ -38,7 +38,7 @@ my $oid;
 # Table OID number
 my $number = $CFG{'NUMBER'} || 1234;
 # Default session options
-my $default_session = $CFG{'SESSION'} || 'Version=2c;DestHost=localhost;Community=public;UseNumeric=1';
+my $default_session = 'Version=2c;DestHost=localhost;Community=public;UseNumeric=1';
 # Custom session options
 my $session;
 # Debug variable
@@ -72,9 +72,8 @@ $oid = '.'.$oid if ($oid !~ /[a-zA-Z]/ and $oid !~ /^\./);
 # Merge the default and custom session options
 my %SESSION;
 &getSessionOptions($default_session);
-if (defined $session) {
-	&getSessionOptions($session);
-}
+&getSessionOptions($CFG{'SESSION'}) if (exists $CFG{'SESSION'});
+&getSessionOptions($session) if (defined $session);
 if ($DEBUG > 0) {
 	&message('I', 'SNMP::Session options:');
 	foreach my $key (sort keys %SESSION) {
@@ -97,7 +96,7 @@ my $prev_timestamp = 0;
 # Maximum time between the collections in seconds (4 minutes)
 my $max_time = $ENV{'MAX_TIME'} || $CFG{'MAX_TIME'} || 240;
 # Random sleep at the start of the script
-my $sleep = int rand($CFG{'SLEEP'} || $ENV{'EXTAGENT_SLEEP'} || 60);
+my $sleep = int rand($ENV{'EXTAGENT_SLEEP'} || $CFG{'SLEEP'} || 0);
 # Name of the agent
 my $NAME = $CFG{'NAME'} || 'table-maker';
 # OID of the agent
