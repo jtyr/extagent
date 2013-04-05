@@ -40,7 +40,7 @@ my $port = $CFG{'PORT'} || 3306;
 # Socket file
 my $socket = $CFG{'SOCKET'} || undef;
 # Database name
-my $base = $CFG{'DATABASE'} || 'test';
+my $base = $CFG{'BASE'} || 'test';
 # User name
 my $user = $CFG{'USER'} || undef;
 # User password

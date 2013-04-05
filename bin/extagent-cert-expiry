@@ -40,9 +40,9 @@ my $domain_list = undef;
 # Directory with certificates
 my $dir;
 # Certificates file pattern
-my $file_pattern = $CFG{'FILE_PATTERN'} || '.*\.crt';
+my $file_pattern = $CFG{'PATTERN'} || '.*\.crt';
 # Input files type (PEM, DER, NET)
-my $file_type = $CFG{'FILE_TYPE'} || 'PEM';
+my $file_type = $CFG{'TYPE'} || 'PEM';
 # SSL connection timeout in seconds
 my $timeout = $CFG{'TIMEOUT'} || 2;
 # Debug variable

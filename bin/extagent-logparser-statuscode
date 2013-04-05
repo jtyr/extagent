@@ -41,15 +41,15 @@ my $file_pattern;
 # Application instance
 my $instance;
 # Date format
-my $date_format = $CFG{'DATA_FORMAT'} || '%d/%b/%Y:%H:%M';
+my $date_format = $CFG{'FORMAT'} || '%d/%b/%Y:%H:%M';
 # Replace index
-my $value_regexp = $CFG{'VALUE_REGEXP'} || '.*\] ".[^"]*" ([2345])[0-9]{2} ([0-9]+|-) .*$';
+my $value_regexp = $CFG{'VALUE'} || '.*\] ".[^"]*" ([2345])[0-9]{2} ([0-9]+|-) .*$';
 # Status code index
-my $code_index = $CFG{'CODE_INDEX'} || 1;
+my $code_index = $CFG{'CODEIDX'} || 1;
 # Response time index
-my $resp_index = $CFG{'RESP_INDEX'} || 2;
+my $resp_index = $CFG{'RESPIDX'} || 2;
 # Log regexp
-my $log_regexp = $CFG{'LOG_REGEXP'} || undef;
+my $log_regexp = $CFG{'LOGREGEXP'} || undef;
 # Debug variable
 my $DEBUG = $CFG{'DEBUG'} || 0;
 # To show help
@@ -64,7 +64,7 @@ GetOptions (
 	'v|value=s'	=> \$value_regexp,
 	'c|codeidx=i'	=> \$code_index,
 	'r|respidx=i'	=> \$resp_index,
-	'l|logregex=s'	=> \$log_regexp,
+	'l|logregexp=s'	=> \$log_regexp,
 	'e|debug'	=> \$DEBUG,
 	'h|help'	=> \$help
 );
@@ -317,7 +317,7 @@ sub help() {
 	print '  -r, --respidx=NUM   respons time index (default: 2)'."\n";
 	print '  -f, --format=STR    date format of the log file'."\n";
 	print '                      (default: %d/%b/%Y:%H:%M)'."\n";
-	print '  -l, --logregex=STR  regex applied on the log file name'."\n";
+	print '  -l, --logregexp=STR regexp applied on the log file name'."\n";
 	print '  -e, --debug         debug mode'."\n";
 	print '  -h, --help          display this help and exit'."\n\n";
 	print 'Examples:'."\n";

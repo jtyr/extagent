@@ -43,9 +43,9 @@ my $host = $CFG{'HOST'} || 'localhost';
 # Default port number
 my $port = $CFG{'PORT'} || 80;
 # Default record type URL
-my $url_record = $CFG{'URL_RECORD'} || 'jmx-console/XmlAdaptor?action=invokeOpByName&name=lastminute.monitoring%3Aservice%3DMonitorLogging&methodName=getMonitorInfo&argType=java.lang.String&arg0=';
+my $url_record = $CFG{'RECURL'} || 'jmx-console/XmlAdaptor?action=invokeOpByName&name=lastminute.monitoring%3Aservice%3DMonitorLogging&methodName=getMonitorInfo&argType=java.lang.String&arg0=';
 # Default request type URL
-my $url_request = $CFG{'URL_REQUEST'} || 'jmx-console/XmlAdaptor?action=invokeOpByName&name=lastminute.monitoring%3Aservice%3DMonitorLogging&methodName=getMonitorInfo&argType=java.lang.String&arg0=openUniqueSummary=';
+my $url_request = $CFG{'REQURL'} || 'jmx-console/XmlAdaptor?action=invokeOpByName&name=lastminute.monitoring%3Aservice%3DMonitorLogging&methodName=getMonitorInfo&argType=java.lang.String&arg0=openUniqueSummary=';
 # Default user
 my $user = $CFG{'USER'} || 'admin';
 # Default password

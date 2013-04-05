@@ -45,7 +45,7 @@ my $user = $CFG{'USER'};
 # Grep expression
 my $grep = $CFG{'GREP'} || 'java';
 # Path to the tmp directory
-my $tmp_path = $CFG{'TMP_PATH'} || '/tmp';
+my $tmp_path = $CFG{'TMP'} || '/tmp';
 # Debug variable
 my $DEBUG = $CFG{'DEBUG'} || 0;
 # To show help
