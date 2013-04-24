@@ -1,5 +1,5 @@
 %define		pkgprefix extagent
-%define		main_version 20130405-r1
+%define		main_version 20130422-r1
 
 Name:		%{pkgprefix}-daemon
 Summary:	Daemon for SNMP Extension Agents
