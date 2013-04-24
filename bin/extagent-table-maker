@@ -129,9 +129,6 @@ while (1) {
 	# Check when was the last parsing
 	my $curr_timestamp = time;
 	if ($curr_timestamp - $prev_timestamp > $max_time) {
-		# Reset the data
-		@struct = ();
-
 		# Read SNMP data
 		&getData();
 
@@ -232,6 +229,11 @@ sub getData() {
 
 	if (scalar @struct_tmp > 1) {
 		@struct = @struct_tmp;
+	} else {
+		# Reset the data
+		@struct = ();
+
+		&message('W', 'Table is empty!') if ($DEBUG > 0);
 	}
 }
 
