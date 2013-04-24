@@ -1,5 +1,5 @@
 %define		pkgprefix extagent
-%define		main_version 20130422-r1
+%define		main_version 20130424-r1
 
 Name:		%{pkgprefix}-daemon
 Summary:	Daemon for SNMP Extension Agents
@@ -149,7 +149,7 @@ This is SNMP extension agent demonstrating simple SNMP structure.
 
 %package -n %{pkgprefix}-table-maker
 Summary:	Table maker agent
-Version:	1.14
+Version:	1.15
 Release:	1%{?dist}
 Group:		Application/Monitoring
 Requires:	%{pkgprefix}-daemon >= 1.14
