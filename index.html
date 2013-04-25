@@ -48,6 +48,103 @@ $ make perforce - generate spec file with Perforce revision number
 $ make clean    - clean dir
 $ make clear    - clear dir
 </code></pre>
+
+<h1>Available sensors</h1>
+
+<ul>
+<li>
+<code>extagent_logparser_statuscode</code>
+
+<ul>
+<li>HTTP status codes</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.1.1</li>
+</ul>
+</li>
+<li>
+<code>extagent_cert_expiry</code>
+
+<ul>
+<li>certificate expiry from network</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.2.1</li>
+</ul>
+</li>
+<li>
+<code>extagent_cert_expiry</code>
+
+<ul>
+<li>certificate expiry from file</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.2.2</li>
+</ul>
+</li>
+<li>
+<code>extagent_sendmail_stats</code>
+
+<ul>
+<li>Sendmail statistics</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.3.1</li>
+</ul>
+</li>
+<li>
+<code>extagent_file_size</code>
+
+<ul>
+<li>file size</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.4.1</li>
+</ul>
+</li>
+<li>
+<code>extagent_javaapp_elogging</code>
+
+<ul>
+<li>Java elogging</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.5.2</li>
+</ul>
+</li>
+<li>
+<code>extagent_javaapp_gc</code>
+
+<ul>
+<li>Java Garbage Collector</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.5.3</li>
+</ul>
+</li>
+<li>
+<code>extagent_javaapp_status</code>
+
+<ul>
+<li>Java application status files</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.5.1</li>
+</ul>
+</li>
+<li>
+<code>extagent_cpu_summary</code>
+
+<ul>
+<li>CPU summary</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.6.1</li>
+</ul>
+</li>
+<li>
+<code>extagent_mysql_status</code>
+
+<ul>
+<li>MySQL status</li>
+<li>OID: 1.3.6.1.4.1.8072.9999.9999.7.1</li>
+</ul>
+</li>
+</ul><p>Any of the OIDs can be changed to a custom value.</p>
+
+<h1>SNMP configuration</h1>
+
+<pre><code>view    allview        included      .1
+rocommunity monitoring
+master agentx
+</code></pre>
+
+<h1>Testing</h1>
+
+<pre><code>$ snmpwalk -v 2c -c monitoring localhost 1.3.6.1.4.1.8072.9999.9999
+</code></pre>
         </section>
 
         <footer>
