@@ -1,5 +1,5 @@
 %define		pkgprefix extagent
-%define		main_version 20130424-r1
+%define		main_version 20130522-r1
 
 Name:		%{pkgprefix}-daemon
 Summary:	Daemon for SNMP Extension Agents
@@ -20,16 +20,16 @@ Requires:	logrotate
 This is a daemon which executes individual agents.
 
 
-%package -n %{pkgprefix}-logparser-statuscode
-Summary:	HTTP Status Code agent
+%package -n %{pkgprefix}-http-statuscodes
+Summary:	HTTP Status Codes agent
 Version:	1.14
 Release:	1%{?dist}
 Group:		Application/Monitoring
 Requires:	%{pkgprefix}-daemon >= 1.14
 Requires:	net-snmp-perl
 
-%description -n %{pkgprefix}-logparser-statuscode
-This is SNMP extension agent for HTTP status code monitoring.
+%description -n %{pkgprefix}-http-statuscodes
+This is SNMP extension agent for HTTP status codes monitoring.
 
 
 %package -n %{pkgprefix}-cert-expiry
@@ -70,7 +70,7 @@ Requires:	net-snmp-perl
 This is SNMP extension agent for file size monitoring.
 
 
-%package -n %{pkgprefix}-javaapp-status
+%package -n %{pkgprefix}-java-statusfile
 Summary:	Java application status agent
 Version:	1.14
 Release:	1%{?dist}
@@ -78,11 +78,11 @@ Group:		Application/Monitoring
 Requires:	%{pkgprefix}-daemon >= 1.14
 Requires:	net-snmp-perl
 
-%description -n %{pkgprefix}-javaapp-status
+%description -n %{pkgprefix}-java-statusfile
 This is SNMP extension agent for Java application status monitoring.
 
 
-%package -n %{pkgprefix}-javaapp-elogging
+%package -n %{pkgprefix}-java-elogging
 Summary:	JMX eLogging agent
 Version:	1.14
 Release:	1%{?dist}
@@ -91,7 +91,7 @@ Requires:	%{pkgprefix}-daemon >= 1.14
 Requires:	net-snmp-perl
 Requires:	perl-libwww-perl
 
-%description -n %{pkgprefix}-javaapp-elogging
+%description -n %{pkgprefix}-java-elogging
 This is SNMP extension agent for JMX eLogging monitoring.
 
 
@@ -108,7 +108,7 @@ Requires:	/usr/sbin/dmidecode
 This is SNMP extension agent for CPU summary monitoring.
 
 
-%package -n %{pkgprefix}-javaapp-gc
+%package -n %{pkgprefix}-java-gc
 Summary:	Java GC agent
 Version:	1.14
 Release:	1%{?dist}
@@ -117,12 +117,12 @@ Requires:	%{pkgprefix}-daemon >= 1.14
 Requires:	net-snmp-perl
 Requires:	perl-libwww-perl
 
-%description -n %{pkgprefix}-javaapp-gc
+%description -n %{pkgprefix}-java-gc
 This is SNMP extension agent for Java Garbage Collector monitoring.
 
 
-%package -n %{pkgprefix}-mysql-status
-Summary:	MySQL Status agent
+%package -n %{pkgprefix}-mysql-replstatus
+Summary:	MySQL Replication Status agent
 Version:	1.14
 Release:	1%{?dist}
 Group:		Application/Monitoring
@@ -131,8 +131,8 @@ Requires:	net-snmp-perl
 Requires:	perl-libwww-perl
 Requires:	perl-DBD-MySQL
 
-%description -n %{pkgprefix}-mysql-status
-This is SNMP extension agent for MySQL status monitoring.
+%description -n %{pkgprefix}-mysql-replstatus
+This is SNMP extension agent for MySQL replication status monitoring.
 
 
 %package -n %{pkgprefix}-dummy-simple
@@ -184,10 +184,10 @@ This is SNMP extension agent aggregates other extagents into a table.
 %{_bindir}/%{pkgprefix}d
 %{_var}/log/%{pkgprefix}/%{pkgprefix}d.log
 
-%files -n %{pkgprefix}-logparser-statuscode
+%files -n %{pkgprefix}-http-statuscode
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-logparser-statuscode.conf
-%{_bindir}/%{pkgprefix}-logparser-statuscode
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-http-statuscode.conf
+%{_bindir}/%{pkgprefix}-http-statuscode
 
 %files -n %{pkgprefix}-cert-expiry
 %defattr(-,root,root,-)
@@ -204,25 +204,25 @@ This is SNMP extension agent aggregates other extagents into a table.
 %config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-file-size.conf
 %{_bindir}/%{pkgprefix}-file-size
 
-%files -n %{pkgprefix}-javaapp-status
+%files -n %{pkgprefix}-java-statusfile
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-javaapp-status.conf
-%{_bindir}/%{pkgprefix}-javaapp-status
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-java-statusfile.conf
+%{_bindir}/%{pkgprefix}-java-statusfile
 
-%files -n %{pkgprefix}-javaapp-elogging
+%files -n %{pkgprefix}-java-elogging
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-javaapp-elogging.conf
-%{_bindir}/%{pkgprefix}-javaapp-elogging
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-java-elogging.conf
+%{_bindir}/%{pkgprefix}-java-elogging
 
 %files -n %{pkgprefix}-cpu-summary
 %defattr(-,root,root,-)
 %config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-cpu-summary.conf
 %{_bindir}/%{pkgprefix}-cpu-summary
 
-%files -n %{pkgprefix}-javaapp-gc
+%files -n %{pkgprefix}-java-gc
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-javaapp-gc.conf
-%{_bindir}/%{pkgprefix}-javaapp-gc
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-java-gc.conf
+%{_bindir}/%{pkgprefix}-java-gc
 
 %files -n %{pkgprefix}-mysql-status
 %defattr(-,root,root,-)
@@ -241,6 +241,9 @@ This is SNMP extension agent aggregates other extagents into a table.
 
 
 %changelog
+* Wed May 22 2013 Jiri Tyr <jiri.tyr at gmail.com>
+- Renaming packages.
+
 * Wed Apr 3 2013 Jiri Tyr <jiri.tyr at gmail.com>
 - Replacing underscroles by hyphens.
 

@@ -1,3 +1,18 @@
+1.15 Apr 24 2013
+     - Fixing collection gaps in the table maker output.
+
+1.14 Apr 3 2013
+     - Replacing underscroles by hyphens.
+
+1.13 Apr 2 2013
+     - Added version for each extagent.
+
+1.12 Mar 14 2013
+     - Added extagent-table-maker package.
+
+1.11 Mar 11 2013
+     - Added extagent-dummy-simple package.
+
 1.10 Sep 13 2012
      - Added noreplace to the config macro for all extagent config files.
 
