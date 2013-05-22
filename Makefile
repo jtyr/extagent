@@ -57,7 +57,8 @@ install :
 	$(TOUCH) $(LOGDIR)/$(DNAME).log
 
 
-manifest :
+manifest : clear MANIFEST
+MANIFEST :
 	$(PERLRUN) "-MExtUtils::Manifest=mkmanifest" -e mkmanifest
 	echo 'Makefile' >> ./MANIFEST
 	rm -f ./MANIFEST.bak
@@ -80,7 +81,7 @@ perforce :
 	fi
 
 
-dist : create_distdir
+dist : MANIFEST create_distdir
 	$(TEST) -e MANIFEST
 	$(TAR) $(TARFLAGS) $(DISTVNAME).tar $(DISTVNAME)
 	$(RM_RF) $(DISTVNAME)
