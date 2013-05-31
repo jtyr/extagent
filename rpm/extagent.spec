@@ -1,5 +1,5 @@
 %define		pkgprefix extagent
-%define		main_version 20130522-r1
+%define		main_version 20130531-r1
 
 Name:		%{pkgprefix}-daemon
 Summary:	Daemon for SNMP Extension Agents
@@ -184,10 +184,10 @@ This is SNMP extension agent aggregates other extagents into a table.
 %{_bindir}/%{pkgprefix}d
 %{_var}/log/%{pkgprefix}/%{pkgprefix}d.log
 
-%files -n %{pkgprefix}-http-statuscode
+%files -n %{pkgprefix}-http-statuscodes
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-http-statuscode.conf
-%{_bindir}/%{pkgprefix}-http-statuscode
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-http-statuscodes.conf
+%{_bindir}/%{pkgprefix}-http-statuscodes
 
 %files -n %{pkgprefix}-cert-expiry
 %defattr(-,root,root,-)
@@ -224,10 +224,10 @@ This is SNMP extension agent aggregates other extagents into a table.
 %config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-java-gc.conf
 %{_bindir}/%{pkgprefix}-java-gc
 
-%files -n %{pkgprefix}-mysql-status
+%files -n %{pkgprefix}-mysql-replstatus
 %defattr(-,root,root,-)
-%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-mysql-status.conf
-%{_bindir}/%{pkgprefix}-mysql-status
+%config(noreplace) %{_sysconfdir}/%{pkgprefix}/default/%{pkgprefix}-mysql-replstatus.conf
+%{_bindir}/%{pkgprefix}-mysql-replstatus
 
 %files -n %{pkgprefix}-dummy-simple
 %defattr(-,root,root,-)
@@ -241,6 +241,9 @@ This is SNMP extension agent aggregates other extagents into a table.
 
 
 %changelog
+* Fri May 31 2013 Jiri Tyr <jiri.tyr at gmail.com>
+- Fixing typo in the http-statuscodes and the mysql-replstatus package.
+
 * Wed May 22 2013 Jiri Tyr <jiri.tyr at gmail.com>
 - Renaming packages.
 
